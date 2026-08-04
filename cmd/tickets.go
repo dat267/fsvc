@@ -20,6 +20,7 @@ type TicketsCmdGroup struct {
 	Categorize     TicketsCategorizeCmd     `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
 	FillStartDates TicketsFillStartDatesCmd `cmd:"" help:"Backfill planned_start_date from first_responded_at on your unresolved tickets"`
 	FillEndDates   TicketsFillEndDatesCmd   `cmd:"" help:"Bulk-set planned_end_date to now + N days on your unresolved tickets"`
+	SyncPriority   TicketsSyncPriorityCmd   `cmd:"" help:"Sync urgency and impact to match priority on your unresolved tickets"`
 	Update         TicketsUpdateCmd         `cmd:"" help:"Update a ticket"`
 }
 
@@ -417,6 +418,61 @@ func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) 
 
 	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
 		return json.Marshal(map[string]string{ch.field: ch.to})
+	})
+}
+
+// ---- sync-priority ----------------------------------------------------------
+
+var priorityMatrix = map[float64]struct{ urgency, impact float64 }{
+	1: {1, 1}, // Low
+	2: {2, 2}, // Medium
+	3: {3, 3}, // High
+	4: {3, 3}, // Urgent
+}
+
+type TicketsSyncPriorityCmd struct {
+	Yes     bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
+	PerPage int  `help:"Tickets per page" default:"100"`
+}
+
+func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) error {
+	var changes []pendingChange
+
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
+		p, ok := ticket["priority"].(float64)
+		if !ok {
+			return nil
+		}
+		target, has := priorityMatrix[p]
+		if !has {
+			return nil
+		}
+		curU, _ := ticket["urgency"].(float64)
+		curI, _ := ticket["impact"].(float64)
+
+		if curU == target.urgency && curI == target.impact {
+			return nil
+		}
+		changes = append(changes, pendingChange{
+			id:    id,
+			field: fmt.Sprintf("priority=%.0f", p),
+			from:  fmt.Sprintf("urgency=%.0f impact=%.0f", curU, curI),
+			to:    fmt.Sprintf("urgency=%.0f impact=%.0f", target.urgency, target.impact),
+		})
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
+		parts := strings.Split(ch.to, " ")
+		m := map[string]any{}
+		for _, p := range parts {
+			kv := strings.Split(p, "=")
+			v, _ := strconv.ParseFloat(kv[1], 64)
+			m[kv[0]] = v
+		}
+		return json.Marshal(m)
 	})
 }
 

@@ -515,6 +515,74 @@ func TestTicketsUpdateCmd_InvalidPair(t *testing.T) {
 	}
 }
 
+func TestTicketsSyncPriorityCmd(t *testing.T) {
+	var putCalls []struct {
+		Path string
+		Body []byte
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20},{"id":30}],"meta":{"has_next":false}}`)
+	})
+	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			// priority 4, urgency 2, impact 2 → should sync to urgency 3, impact 3
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":4,"urgency":2,"impact":2}}`)
+		} else {
+			b, _ := io.ReadAll(r.Body)
+			putCalls = append(putCalls, struct {
+				Path string
+				Body []byte
+			}{Path: r.URL.Path, Body: b})
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
+		}
+	})
+	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
+		// priority 1, urgency 1, impact 1 → already correct, skip
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"priority":1,"urgency":1,"impact":1}}`)
+	})
+	mux.HandleFunc("/api/_/tickets/30", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			// priority 3, urgency 3, impact 1 → sync impact to 3
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"priority":3,"urgency":3,"impact":1}}`)
+		} else {
+			b, _ := io.ReadAll(r.Body)
+			putCalls = append(putCalls, struct {
+				Path string
+				Body []byte
+			}{Path: r.URL.Path, Body: b})
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":30}}`)
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	out := captureStdout(t, func() {
+		err := (&TicketsSyncPriorityCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "[priority=4] ticket 10: urgency=2 impact=2 -> urgency=3 impact=3") {
+		t.Errorf("expected ticket 10 preview, got %q", out)
+	}
+	if !strings.Contains(out, "[priority=3] ticket 30: urgency=3 impact=1 -> urgency=3 impact=3") {
+		t.Errorf("expected ticket 30 preview, got %q", out)
+	}
+	if strings.Contains(out, "ticket 20") {
+		t.Errorf("ticket 20 should not appear in preview, got %q", out)
+	}
+	if len(putCalls) != 2 {
+		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
+	}
+	if !strings.Contains(out, "Done: 2 applied") {
+		t.Errorf("expected summary, got %q", out)
+	}
+}
+
 func TestAddBusinessDays(t *testing.T) {
 	mon := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC) // Monday
 
