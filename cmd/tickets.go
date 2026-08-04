@@ -95,11 +95,11 @@ func (c *TicketsConvCmd) Run(ctx context.Context, client *fsapi.Client) error {
 }
 
 type TicketsCategorizeCmd struct {
-	OlderThanDays float64 `help:"Days threshold for stale agent response" default:"2"`
-	Page          int     `help:"Page number" default:"1"`
-	PerPage       int     `help:"Tickets per page" default:"100"`
-	QueryJSON     string  `name:"query-json" help:"Raw JSON query params to pass to the tickets list endpoint"`
-	Filter        int64   `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
+	OlderThanDays int    `help:"Business days threshold for stale agent response" default:"2"`
+	Page          int    `help:"Page number" default:"1"`
+	PerPage       int    `help:"Tickets per page" default:"100"`
+	QueryJSON     string `name:"query-json" help:"Raw JSON query params to pass to the tickets list endpoint"`
+	Filter        int64  `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
 }
 
 var categorizeColumns = []Column{
@@ -125,7 +125,7 @@ type catTicket struct {
 }
 
 func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) error {
-	threshold := time.Now().Add(-time.Duration(c.OlderThanDays * float64(time.Hour) * 24))
+	threshold := subBusinessDays(nowInTZ(), c.OlderThanDays)
 
 	var unassigned, staleAgent, awaitingCustomer []catTicket
 	page := c.Page
@@ -224,7 +224,7 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 
 	fmt.Printf("# Unassigned (%d)\n", len(unassigned))
 	printCatTable(unassigned, categorizeColumnsNoMsg)
-	fmt.Printf("\n# Agent replied > %.1f days, awaiting customer (%d)\n", c.OlderThanDays, len(staleAgent))
+	fmt.Printf("\n# Agent replied > %d business days, awaiting customer (%d)\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, categorizeColumns)
 	fmt.Printf("\n# Customer replied, awaiting agent (%d)\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, categorizeColumns)
@@ -345,16 +345,6 @@ type pendingChange struct {
 
 var myFilter = `[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`
 
-func addBusinessDays(t time.Time, n int) time.Time {
-	for i := 0; i < n; {
-		t = t.Add(24 * time.Hour)
-		if t.Weekday() != time.Saturday && t.Weekday() != time.Sunday {
-			i++
-		}
-	}
-	return t
-}
-
 func confirmApply(n int) bool {
 	fmt.Printf("\nApply %d changes? [y/N] ", n)
 	var answer string
@@ -402,8 +392,8 @@ type TicketsFillEndDatesCmd struct {
 }
 
 func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
-	target := addBusinessDays(time.Now(), c.Days).Format(time.RFC3339)
-	now := time.Now()
+	base := nowInTZ()
+	target := addBusinessDays(base, c.Days).Format(time.RFC3339)
 
 	var changes []pendingChange
 	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
@@ -414,7 +404,7 @@ func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) 
 		}
 
 		if cur != "" {
-			if at, err := time.Parse(time.RFC3339, cur); err == nil && at.After(now) {
+			if at, err := time.Parse(time.RFC3339, cur); err == nil && at.After(base) {
 				return nil // already in the future, leave alone
 			}
 		}

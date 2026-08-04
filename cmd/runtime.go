@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/kong"
 
@@ -16,6 +17,45 @@ import (
 
 // appName is used for config path resolution. SetAppName overrides it.
 var appName = "fsvc"
+
+// tz is set by Execute from the --tz flag before commands run.
+var tz string
+
+// nowInTZ returns the current time in the configured timezone (or local if unset).
+func nowInTZ() time.Time {
+	if tz == "" {
+		return time.Now()
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: unknown timezone %q, falling back to local\n", tz)
+		tz = ""
+		return time.Now()
+	}
+	return time.Now().In(loc)
+}
+
+// addBusinessDays adds n weekdays, skipping weekends.
+func addBusinessDays(t time.Time, n int) time.Time {
+	for i := 0; i < n; {
+		t = t.Add(24 * time.Hour)
+		if t.Weekday() != time.Saturday && t.Weekday() != time.Sunday {
+			i++
+		}
+	}
+	return t
+}
+
+// subBusinessDays subtracts n weekdays, skipping weekends.
+func subBusinessDays(t time.Time, n int) time.Time {
+	for i := 0; i < n; {
+		t = t.Add(-24 * time.Hour)
+		if t.Weekday() != time.Saturday && t.Weekday() != time.Sunday {
+			i++
+		}
+	}
+	return t
+}
 
 const configFileFlagName = "config-file"
 
@@ -88,6 +128,7 @@ func Execute(ctx context.Context) {
 	k.FatalIfErrorf(err)
 
 	app.cfgPath = cli.ConfigFile
+	tz = cli.TimeZone
 	client.Update(clientConfigFromCLI(cli))
 	k.FatalIfErrorf(kongCtx.Run())
 }

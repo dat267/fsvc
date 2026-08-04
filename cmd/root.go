@@ -16,6 +16,7 @@ type CLI struct {
 	Cookie        string                `help:"Session cookie string"`
 	CSRFToken     string                `help:"CSRF token for write requests"`
 	BaseURL       string                `help:"Override API base URL"`
+	TimeZone      string                `help:"Timezone for business-day calculations (e.g. Europe/London)" env:"FSVC_TZ"`
 	Version       VersionCmd            `cmd:"" help:"Show version"`
 	Session       SessionCmd            `cmd:"" help:"Verify the session cookie"`
 	Tickets       TicketsCmdGroup       `cmd:"" help:"Work with tickets"`

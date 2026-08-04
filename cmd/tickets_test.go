@@ -197,7 +197,7 @@ func TestTicketsCategorizeCmd(t *testing.T) {
 	if !strings.Contains(out, "10103") {
 		t.Errorf("expected unassigned ticket 10103:\n%s", out)
 	}
-	if !strings.Contains(out, "# Agent replied > 1.0 days, awaiting customer (2)") {
+	if !strings.Contains(out, "# Agent replied > 1 business days, awaiting customer (2)") {
 		t.Errorf("expected 2 stale-agent tickets:\n%s", out)
 	}
 	if !strings.Contains(out, "10104") {
@@ -534,6 +534,28 @@ func TestAddBusinessDays(t *testing.T) {
 		got := addBusinessDays(tt.start, tt.n).Format("2006-01-02")
 		if got != tt.want {
 			t.Errorf("addBusinessDays(%s, %d) = %s, want %s", tt.start.Format("2006-01-02"), tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestSubBusinessDays(t *testing.T) {
+	mon := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		start time.Time
+		n     int
+		want  string
+	}{
+		{mon, 0, "2026-08-03"},
+		{mon, 1, "2026-07-31"},
+		{mon, 3, "2026-07-29"},
+		{time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC), 1, "2026-08-07"},
+	}
+
+	for _, tt := range tests {
+		got := subBusinessDays(tt.start, tt.n).Format("2006-01-02")
+		if got != tt.want {
+			t.Errorf("subBusinessDays(%s, %d) = %s, want %s", tt.start.Format("2006-01-02"), tt.n, got, tt.want)
 		}
 	}
 }
