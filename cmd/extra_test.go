@@ -28,13 +28,13 @@ func TestTicketFiltersShowCmd(t *testing.T) {
 
 func TestUsersShowCmd(t *testing.T) {
 	srv := serveFixture(t, "user.json", func(r *http.Request) {
-		if r.URL.Path != "/api/_/users/2105" {
-			t.Errorf("expected path /api/_/users/2105, got %s", r.URL.Path)
+		if r.URL.Path != "/api/_/users/2100" {
+			t.Errorf("expected path /api/_/users/2100, got %s", r.URL.Path)
 		}
 	})
 
 	out := captureStdout(t, func() {
-		err := (&UsersShowCmd{ID: 2105}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&UsersShowCmd{ID: 2100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

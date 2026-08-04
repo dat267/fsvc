@@ -25,7 +25,7 @@ Six HAR captures in `har/` document the following requests against
 | GET | `/api/_/tickets` | query: `filter`, `include`, `order_by`, `order_type`, `page`, `per_page`, `query_hash`, `advanced_query_hash`; returns `{ "tickets": [...], "meta": {...} }` |
 | GET | `/api/_/tickets/10100/conversations` | query: `include`, `per_page`; returns `{ "conversations": [...], "meta": {...} }` |
 | GET | `/api/_/tickets/10100/requested_items/7101` | query: `view`; returns `{ "business_rules": ..., "requested_item": {...} }` |
-| GET | `/api/_/users/2105` | returns `{ "user": {...} }` |
+| GET | `/api/_/users/2100` | returns `{ "user": {...} }` |
 | PUT | `/api/_/tickets/10100` | body: `{ "priority", "group_id", "responder_id", "department_id", "br_validation_excludes" }`; requires `X-CSRF-Token` header; returns `{ "meta": {...}, "ticket": {...} }` |
 
 Key observed facts:
