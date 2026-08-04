@@ -56,8 +56,13 @@ Currently `tickets categorize` treats a ticket as unassigned when the response
 
 ## Open questions (unverified)
 
-- Conversations sort: does `order_by=created_at&order_type=desc` work, or does
-  the endpoint default to ascending?
 - What message kinds appear in conversations (notes, phone, system messages)?
 - Does the server accept raw conditions JSON as the `query_hash` query param?
 - `per_page` maximum for the private API.
+
+## Resolved
+
+- Conversations are returned **latest first** by default (user-confirmed). The
+  `tickets categorize` command explicitly requests
+  `order_by=created_at&order_type=desc&per_page=1` and reads the first item as
+  the latest message.
