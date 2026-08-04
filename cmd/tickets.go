@@ -336,13 +336,12 @@ func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error 
 
 type TicketsFillStartDatesCmd struct {
 	DryRun  bool `help:"Show what would change without applying"`
-	Page    int  `help:"Page number" default:"1"`
 	PerPage int  `help:"Tickets per page" default:"100"`
 }
 
 func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	myFilter := `[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`
-	filled, skipped, page := 0, 0, c.Page
+	filled, skipped, page := 0, 0, 1
 
 	for {
 		q := url.Values{"page": {strconv.Itoa(page)}, "per_page": {strconv.Itoa(c.PerPage)},

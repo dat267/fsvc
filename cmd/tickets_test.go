@@ -317,7 +317,7 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsFillStartDatesCmd{DryRun: false, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsFillStartDatesCmd{DryRun: false, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -351,7 +351,7 @@ func TestTicketsFillStartDatesCmd_DryRun(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsFillStartDatesCmd{DryRun: true, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsFillStartDatesCmd{DryRun: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
