@@ -155,7 +155,7 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 		} else if c.Filter != 0 {
 			q.Set("filter", strconv.FormatInt(c.Filter, 10))
 		} else {
-			q.Set("query_hash", `[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`)
+			q.Set("query_hash", `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`)
 		}
 
 		data, err := client.Get(ctx, "tickets", q)
@@ -526,7 +526,7 @@ func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn 
 	for {
 		q := url.Values{"page": {strconv.Itoa(page)}, "per_page": {strconv.Itoa(perPage)},
 			"order_by": {"created_at"}, "order_type": {"asc"},
-			"query_hash": {`[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`}}
+			"query_hash": {`[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`}}
 		data, err := client.Get(ctx, "tickets", q)
 		if err != nil {
 			return err

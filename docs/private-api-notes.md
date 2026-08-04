@@ -4,31 +4,32 @@ Reverse-engineered knowledge from HAR captures and user verification. The
 private API (`/api/_/`) is undocumented; these notes are the source of truth
 until verified against the real instance.
 
-## Filtering (advanced_query_hash)
+## Filtering (query_hash)
 
-`advanced_query_hash` is the ad-hoc filter parameter to use (user-preference;
-`query_hash` is reserved for saved-filter semantics and is not used here). It
-is an array of condition objects sent URL-encoded as a query parameter:
+`query_hash` accepts a URL-encoded array of condition objects. Verified from a
+real request (the "unresolved" ticket view in the `get_tickets/22889` HAR's
+Referer header):
 
 ```json
-[{"condition": "status", "operator": "is", "value": 0, "type": "default"}]
+[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]
 ```
 
-- `condition` — field name (`status`, `responder_id`, `workspace_id`, ...)
-- `operator` — `is`, `is_in`, and others (unverified)
-- `value` — scalar for `is`, array for `is_in`
-- `type` — `default` (and likely `advanced`)
+- `condition` — field name (`status`, `responder_id`, `created_at`, ...)
+- `operator` — `is`, `is_in`, `is_greater_than`, and others
+- `value` — array for `is_in` (strings), scalar for `is`/`is_greater_than`
+- `type` — `default`
+- `workspace_id` is NOT required in `query_hash` (the unresolved view omits it)
 
-The `tickets categorize` command sends its default unresolved filter via
-`advanced_query_hash`:
+The `tickets categorize` and mutation commands send the default filter via
+`query_hash` (self-assigned + unresolved):
 ```json
-[{"condition":"status","operator":"is","value":0,"type":"default"},
- {"condition":"workspace_id","operator":"is","value":2,"type":"default"}]
+[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},
+ {"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]
 ```
 
 ### Status values
 
-- `status = 0` — unresolved (user-confirmed)
+- `status = 0` — unresolved (user-confirmed; `is_in ["0"]` in the unresolved view)
 - `status in [2, 3]` — the "My Open and Pending Tickets" saved filter from the
   HAR uses this; 2 = Open, 3 = Pending
 
@@ -66,8 +67,8 @@ Currently `tickets categorize` treats a ticket as unassigned when the response
 ## Open questions (unverified)
 
 - What message kinds appear in conversations (notes, phone, system messages)?
-- Does the server accept raw conditions JSON as the `advanced_query_hash`
-  query param (URL-encoded), or does it expect a hash string?
+- Does the server accept `advanced_query_hash` with raw conditions JSON, or
+  does it expect a different format (500 errors suggested the former)?
 - `per_page` maximum for the private API.
 
 ## Resolved
