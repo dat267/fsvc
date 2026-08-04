@@ -17,7 +17,7 @@ import (
 type TicketsCmdGroup struct {
 	List              TicketsListCmd              `cmd:"" help:"List tickets"`
 	Conversations     TicketsConvCmd              `cmd:"" help:"List conversations for a ticket"`
-	Categorize        TicketsCategorizeCmd        `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
+	Categories        TicketsCategoriesCmd        `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
 	FillStartDates    TicketsFillStartDatesCmd    `cmd:"" help:"Backfill planned_start_date from first_responded_at on your unresolved tickets"`
 	FillEndDates      TicketsFillEndDatesCmd      `cmd:"" help:"Bulk-set planned_end_date to now + N days on your unresolved tickets"`
 	SyncPriority      TicketsSyncPriorityCmd      `cmd:"" help:"Sync priority from urgency+impact via standard matrix"`
@@ -96,7 +96,7 @@ func (c *TicketsConvCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	return Print(data, "conversations", ticketsConvColumns, c.Format)
 }
 
-type TicketsCategorizeCmd struct {
+type TicketsCategoriesCmd struct {
 	OlderThanDays int    `help:"Business days threshold for stale agent response" default:"2"`
 	Page          int    `help:"Page number" default:"1"`
 	PerPage       int    `help:"Tickets per page" default:"100"`
@@ -126,7 +126,7 @@ type catTicket struct {
 	incoming  bool
 }
 
-func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketsCategoriesCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	threshold := subBusinessDays(nowInTZ(), c.OlderThanDays)
 
 	var unassigned, staleAgent, awaitingCustomer []catTicket
@@ -155,7 +155,7 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 		} else if c.Filter != 0 {
 			q.Set("filter", strconv.FormatInt(c.Filter, 10))
 		} else {
-			q.Set("query_hash", `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`)
+			q.Set("query_hash", `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]`)
 		}
 
 		data, err := client.Get(ctx, "tickets", q)
@@ -177,7 +177,7 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 			id := t["id"].(float64)
 			entry := catTicket{id: id, ticket: t}
 
-			if r := t["responder_id"]; r == nil || r == float64(0) {
+			if r := t["responder_id"]; r == nil || r == float64(-1) {
 				unassigned = append(unassigned, entry)
 				continue
 			}

@@ -20,8 +20,14 @@ Referer header):
 - `type` — `default`
 - `workspace_id` is NOT required in `query_hash` (the unresolved view omits it)
 
-The `tickets categorize` and mutation commands send the default filter via
-`query_hash` (self-assigned + unresolved):
+`tickets categories` queries **all unresolved** tickets (no responder_id
+condition) so the unassigned list can be derived:
+```json
+[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]
+```
+
+The mutation commands (fill-*, sync-*) query **self-assigned** unresolved
+tickets:
 ```json
 [{"condition":"status","operator":"is_in","value":["0"],"type":"default"},
  {"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]
@@ -33,18 +39,17 @@ The `tickets categorize` and mutation commands send the default filter via
 - `status in [2, 3]` — the "My Open and Pending Tickets" saved filter from the
   HAR uses this; 2 = Open, 3 = Pending
 
-### responder_id values (user-confirmed, not yet used)
+### responder_id values (user-confirmed)
 
-- `responder_id = -1` — **unassigned** (in advanced_query_hash)
+- `responder_id = -1` — **unassigned**
 - `responder_id = 0` — **assigned to self**
 - Note: the saved-filter HAR used `responder_id is_in [0]` for "My Open and
   Pending Tickets", which reads as "assigned to me" in that context.
 
 ## Unassigned detection
 
-Currently `tickets categorize` treats a ticket as unassigned when the response
-`responder_id` is `null` or `0`. This may need revisiting against the
-`advanced_query_hash` semantics above once we act on them.
+`tickets categories` treats a ticket as unassigned when the response
+`responder_id` is `null` or `-1`.
 
 ## Endpoints
 
@@ -74,6 +79,6 @@ Currently `tickets categorize` treats a ticket as unassigned when the response
 ## Resolved
 
 - Conversations are returned **latest first** by default (user-confirmed). The
-  `tickets categorize` command explicitly requests
+  `tickets categories` command explicitly requests
   `order_by=created_at&order_type=desc&per_page=1` and reads the first item as
   the latest message.

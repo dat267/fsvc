@@ -160,7 +160,7 @@ func TestTicketsConvCmd(t *testing.T) {
 	}
 }
 
-func TestTicketsCategorizeCmd(t *testing.T) {
+func TestTicketsCategoriesCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -185,7 +185,7 @@ func TestTicketsCategorizeCmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsCategorizeCmd{OlderThanDays: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsCategoriesCmd{OlderThanDays: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -208,7 +208,7 @@ func TestTicketsCategorizeCmd(t *testing.T) {
 	}
 }
 
-func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
+func TestTicketsCategoriesCmd_QueryJSON(t *testing.T) {
 	var gotQuery url.Values
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -223,7 +223,7 @@ func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	err := (&TicketsCategorizeCmd{QueryJSON: `{"filter":"123","query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+	err := (&TicketsCategoriesCmd{QueryJSON: `{"filter":"123","query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
 	}
 }
 
-func TestTicketsCategorizeCmd_Pagination(t *testing.T) {
+func TestTicketsCategoriesCmd_Pagination(t *testing.T) {
 	calls := 0
 	var pages []string
 
@@ -268,7 +268,7 @@ func TestTicketsCategorizeCmd_Pagination(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsCategorizeCmd{OlderThanDays: 1, Page: 1, PerPage: 1}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsCategoriesCmd{OlderThanDays: 1, Page: 1, PerPage: 1}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
