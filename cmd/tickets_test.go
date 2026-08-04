@@ -528,8 +528,7 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 	})
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			// priority 4, urgency 2, impact 2 → should sync to urgency 3, impact 3
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":4,"urgency":2,"impact":2}}`)
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":2,"urgency":3,"impact":3}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
 			putCalls = append(putCalls, struct {
@@ -540,12 +539,10 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 		}
 	})
 	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
-		// priority 1, urgency 1, impact 1 → already correct, skip
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"priority":1,"urgency":1,"impact":1}}`)
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"priority":2,"urgency":2,"impact":2}}`)
 	})
 	mux.HandleFunc("/api/_/tickets/30", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			// priority 3, urgency 3, impact 1 → sync impact to 3
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"priority":3,"urgency":3,"impact":1}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
@@ -566,14 +563,14 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(out, "[priority=4] ticket 10: urgency=2 impact=2 -> urgency=3 impact=3") {
+	if !strings.Contains(out, "[urgency=3 impact=3] ticket 10: priority=2 -> priority=4") {
 		t.Errorf("expected ticket 10 preview, got %q", out)
 	}
-	if !strings.Contains(out, "[priority=3] ticket 30: urgency=3 impact=1 -> urgency=3 impact=3") {
+	if !strings.Contains(out, "[urgency=3 impact=1] ticket 30: priority=3 -> priority=2") {
 		t.Errorf("expected ticket 30 preview, got %q", out)
 	}
 	if strings.Contains(out, "ticket 20") {
-		t.Errorf("ticket 20 should not appear in preview, got %q", out)
+		t.Errorf("ticket 20 should not appear, got %q", out)
 	}
 	if len(putCalls) != 2 {
 		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))

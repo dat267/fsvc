@@ -423,11 +423,10 @@ func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) 
 
 // ---- sync-priority ----------------------------------------------------------
 
-var priorityMatrix = map[float64]struct{ urgency, impact float64 }{
-	1: {1, 1}, // Low
-	2: {2, 2}, // Medium
-	3: {3, 3}, // High
-	4: {3, 3}, // Urgent
+var priorityByUI = map[float64]map[float64]float64{
+	1: {1: 1, 2: 1, 3: 2}, // Urgency Low
+	2: {1: 1, 2: 2, 3: 3}, // Urgency Medium
+	3: {1: 2, 2: 3, 3: 4}, // Urgency High
 }
 
 type TicketsSyncPriorityCmd struct {
@@ -439,25 +438,20 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) 
 	var changes []pendingChange
 
 	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
-		p, ok := ticket["priority"].(float64)
-		if !ok {
-			return nil
-		}
-		target, has := priorityMatrix[p]
-		if !has {
-			return nil
-		}
-		curU, _ := ticket["urgency"].(float64)
-		curI, _ := ticket["impact"].(float64)
+		u, _ := ticket["urgency"].(float64)
+		i, _ := ticket["impact"].(float64)
+		p, _ := ticket["priority"].(float64)
 
-		if curU == target.urgency && curI == target.impact {
+		target := priorityByUI[u][i]
+		if target == 0 || target == p {
 			return nil
 		}
+
 		changes = append(changes, pendingChange{
 			id:    id,
-			field: fmt.Sprintf("priority=%.0f", p),
-			from:  fmt.Sprintf("urgency=%.0f impact=%.0f", curU, curI),
-			to:    fmt.Sprintf("urgency=%.0f impact=%.0f", target.urgency, target.impact),
+			field: fmt.Sprintf("urgency=%.0f impact=%.0f", u, i),
+			from:  fmt.Sprintf("priority=%.0f", p),
+			to:    fmt.Sprintf("priority=%.0f", target),
 		})
 		return nil
 	}); err != nil {
@@ -465,14 +459,9 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) 
 	}
 
 	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
-		parts := strings.Split(ch.to, " ")
-		m := map[string]any{}
-		for _, p := range parts {
-			kv := strings.Split(p, "=")
-			v, _ := strconv.ParseFloat(kv[1], 64)
-			m[kv[0]] = v
-		}
-		return json.Marshal(m)
+		parts := strings.Split(ch.to, "=")
+		v, _ := strconv.ParseFloat(parts[1], 64)
+		return json.Marshal(map[string]any{parts[0]: v})
 	})
 }
 
