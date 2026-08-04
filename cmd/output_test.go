@@ -97,10 +97,10 @@ func TestRenderTable_Markdown(t *testing.T) {
 	}
 
 	got := RenderTable(columns, rows)
-	want := `| ID    | Name   |
-| ----- | ------ |
+	want := `| ID    | Name |
+| ----- | ---- |
 | 10100 | Omar |
-| 10101 | Lina  |
+| 10101 | Lina |
 `
 	if got != want {
 		t.Errorf("unexpected table:\n%s", got)
