@@ -135,13 +135,17 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 			return fmt.Errorf("invalid --query-json: %w", err)
 		}
 		for k, v := range extra {
+			if s, ok := v.(string); ok {
+				q.Set(k, s)
+				continue
+			}
 			b, _ := json.Marshal(v)
 			q.Set(k, string(b))
 		}
 	} else if c.Filter != 0 {
 		q.Set("filter", strconv.FormatInt(c.Filter, 10))
 	} else {
-		q.Set("query_hash", `[{"condition":"status","operator":"is","value":-1,"type":"default"}]`)
+		q.Set("query_hash", `[{"condition":"status","operator":"is","value":0,"type":"default"}]`)
 	}
 
 	data, err := client.Get(ctx, "tickets", q)

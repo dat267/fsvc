@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -193,6 +196,42 @@ func TestTicketsCategorizeCmd(t *testing.T) {
 	}
 	if !strings.Contains(out, "# Customer replied, awaiting agent (1)") {
 		t.Errorf("expected 1 customer-responded ticket:\n%s", out)
+	}
+}
+
+func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
+	var gotQuery url.Values
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(loadFixture(t, "tickets.json"))
+	})
+	mux.HandleFunc("/api/_/tickets/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"conversations":[],"meta":{"count":0}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := (&TicketsCategorizeCmd{QueryJSON: `{"filter":"123","query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 30}).Run(context.Background(), newTestClient(srv.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotQuery.Get("filter") != "123" {
+		t.Errorf("expected filter=123 (unquoted), got %q", gotQuery.Get("filter"))
+	}
+	var gotHash, wantHash any
+	if err := json.Unmarshal([]byte(gotQuery.Get("query_hash")), &gotHash); err != nil {
+		t.Fatalf("query_hash is not JSON: %q", gotQuery.Get("query_hash"))
+	}
+	_ = json.Unmarshal([]byte(`[{"condition":"status","operator":"is","value":0,"type":"default"}]`), &wantHash)
+	if !reflect.DeepEqual(gotHash, wantHash) {
+		t.Errorf("expected query_hash %v, got %v", wantHash, gotHash)
+	}
+	if gotQuery.Get("per_page") != "30" {
+		t.Errorf("expected per_page=30, got %q", gotQuery.Get("per_page"))
 	}
 }
 
