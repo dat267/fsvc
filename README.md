@@ -22,7 +22,7 @@ fsvc session
 # OK: authenticated (visible tickets: 7)
 
 # Use
-fsvc tickets categories                     # your unresolved tickets in 3 lists
+fsvc tickets classify                     # your unresolved tickets in 3 lists
 fsvc tickets list --format json             # raw ticket list
 fsvc tickets conversations 10100            # messages on a ticket
 fsvc ticket-filters show 1100               # show a saved ticket filter
@@ -47,7 +47,7 @@ fsvc tickets sync-urgency-impact -y                    # set minimal urgency+imp
 
 - Config lives at `~/.config/fsvc/fsvc.json` (or set `--subdomain`/`--cookie` flags per invocation)
 - Cookie rotates automatically — the CLI captures `Set-Cookie` from each response
-- Use `--time-zone Europe/London` for accurate business-day math on `categories` and `fill-end-dates`
+- Use `--time-zone Europe/London` for accurate business-day math on `classify` and `fill-end-dates`
 - Point at a mock server with `--base-url http://127.0.0.1:PORT` for safe testing
 
 ## Config
@@ -80,7 +80,7 @@ Verify the session cookie works. Hits `GET /api/_/tickets?per_page=1`.
 | --- | --- |
 | `tickets list` | List tickets. `--filter <id>`, `--include`, `--order-by`, `--order-type`, `--page`, `--per-page`, `--format table\|json\|csv` |
 | `tickets conversations <id>` | List conversations for a ticket. `--per-page`, `--include`, `--format` |
-| `tickets categories` | Categorize your unresolved tickets into 3 lists: unassigned, stale agent response, customer responded. `--older-than-days` (business days, default 2), `--query-json`, optional filter ID arg |
+| `tickets classify` | Categorize your unresolved tickets into 3 lists: unassigned, stale agent response, customer responded. `--older-than-days` (business days, default 2), `--query-json`, optional filter ID arg |
 | `tickets fill-start-dates` | Backfill `planned_start_date` from `first_responded_at` on your unresolved tickets. Preview + confirm, `-y` to skip prompt |
 | `tickets fill-end-dates` | Bulk-set `planned_end_date` to now + N business days. Bumps past-due dates too. `--days` (default 3), `-y` |
 | `tickets sync-priority` | Sync priority from urgency+impact using the standard priority matrix. `-y` |

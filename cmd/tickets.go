@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fsvc/internal/fsapi"
@@ -17,7 +18,7 @@ import (
 type TicketsCmdGroup struct {
 	List              TicketsListCmd              `cmd:"" help:"List tickets"`
 	Conversations     TicketsConvCmd              `cmd:"" help:"List conversations for a ticket"`
-	Categories        TicketsCategoriesCmd        `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
+	Classify          TicketsClassifyCmd          `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
 	FillStartDates    TicketsFillStartDatesCmd    `cmd:"" help:"Backfill planned_start_date from first_responded_at on your unresolved tickets"`
 	FillEndDates      TicketsFillEndDatesCmd      `cmd:"" help:"Bulk-set planned_end_date to now + N days on your unresolved tickets"`
 	SyncPriority      TicketsSyncPriorityCmd      `cmd:"" help:"Sync priority from urgency+impact via standard matrix"`
@@ -96,7 +97,7 @@ func (c *TicketsConvCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	return Print(data, "conversations", ticketsConvColumns, c.Format)
 }
 
-type TicketsCategoriesCmd struct {
+type TicketsClassifyCmd struct {
 	OlderThanDays int    `help:"Business days threshold for stale agent response" default:"2"`
 	Page          int    `help:"Page number" default:"1"`
 	PerPage       int    `help:"Tickets per page" default:"100"`
@@ -104,7 +105,7 @@ type TicketsCategoriesCmd struct {
 	Filter        int64  `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
 }
 
-var categoriesColumns = []Column{
+var classifyColumns = []Column{
 	{Header: "Subject", Path: "subject"},
 	{Header: "Link", Path: "link"},
 	{Header: "Days", Path: "days"},
@@ -117,92 +118,19 @@ type catTicket struct {
 	incoming  bool
 }
 
-func (c *TicketsCategoriesCmd) Run(ctx context.Context, client *fsapi.Client) error {
+const categoriesWorkers = 8
+
+func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	threshold := subBusinessDays(nowInTZ(), c.OlderThanDays)
 
-	var unassigned, staleAgent, awaitingCustomer []catTicket
-	page := c.Page
+	tickets, err := c.collectTickets(ctx, client)
+	if err != nil {
+		return err
+	}
 
-	for {
-		q := url.Values{}
-		q.Set("page", strconv.Itoa(page))
-		q.Set("per_page", strconv.Itoa(c.PerPage))
-		q.Set("order_by", "created_at")
-		q.Set("order_type", "asc")
-
-		if c.QueryJSON != "" {
-			var extra map[string]any
-			if err := json.Unmarshal([]byte(c.QueryJSON), &extra); err != nil {
-				return fmt.Errorf("invalid --query-json: %w", err)
-			}
-			for k, v := range extra {
-				if s, ok := v.(string); ok {
-					q.Set(k, s)
-					continue
-				}
-				b, _ := json.Marshal(v)
-				q.Set(k, string(b))
-			}
-		} else if c.Filter != 0 {
-			q.Set("filter", strconv.FormatInt(c.Filter, 10))
-		} else {
-			q.Set("query_hash", `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]`)
-		}
-
-		data, err := client.Get(ctx, "tickets", q)
-		if err != nil {
-			return err
-		}
-
-		var doc struct {
-			Tickets []map[string]any `json:"tickets"`
-			Meta    struct {
-				HasNext bool `json:"has_next"`
-			} `json:"meta"`
-		}
-		if err := json.Unmarshal(data, &doc); err != nil {
-			return fmt.Errorf("parse tickets: %w", err)
-		}
-
-		for _, t := range doc.Tickets {
-			id := t["id"].(float64)
-			entry := catTicket{id: id, ticket: t}
-
-			if r := t["responder_id"]; r == nil || r == float64(-1) {
-				unassigned = append(unassigned, entry)
-				continue
-			}
-
-			latest, hasMsg, err := fetchLatestConversation(ctx, client, id)
-			if err != nil {
-				return fmt.Errorf("ticket %.0f: %w", id, err)
-			}
-			if hasMsg {
-				entry.incoming = latest.Incoming
-				entry.lastMsgAt = latest.CreatedAt
-			} else {
-				created, ok := t["created_at"].(string)
-				if !ok {
-					return fmt.Errorf("ticket %.0f: missing created_at", id)
-				}
-				at, err := time.Parse(time.RFC3339, created)
-				if err != nil {
-					return fmt.Errorf("ticket %.0f: bad created_at %q: %w", id, created, err)
-				}
-				entry.lastMsgAt = at
-			}
-
-			if entry.incoming {
-				awaitingCustomer = append(awaitingCustomer, entry)
-			} else if entry.lastMsgAt.Before(threshold) {
-				staleAgent = append(staleAgent, entry)
-			}
-		}
-
-		if !doc.Meta.HasNext {
-			break
-		}
-		page++
+	unassigned, staleAgent, awaitingCustomer, err := classifyTickets(ctx, client, tickets, threshold)
+	if err != nil {
+		return err
 	}
 
 	sort.Slice(unassigned, func(i, j int) bool {
@@ -222,6 +150,164 @@ func (c *TicketsCategoriesCmd) Run(ctx context.Context, client *fsapi.Client) er
 	fmt.Printf("\n# Customer replied, awaiting agent (%d)\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, client)
 	return nil
+}
+
+// collectTickets paginates through the tickets list, collecting every page.
+func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.Client) ([]map[string]any, error) {
+	var tickets []map[string]any
+	page := c.Page
+
+	for {
+		q := url.Values{}
+		q.Set("page", strconv.Itoa(page))
+		q.Set("per_page", strconv.Itoa(c.PerPage))
+		q.Set("order_by", "created_at")
+		q.Set("order_type", "asc")
+
+		if c.QueryJSON != "" {
+			var extra map[string]any
+			if err := json.Unmarshal([]byte(c.QueryJSON), &extra); err != nil {
+				return nil, fmt.Errorf("invalid --query-json: %w", err)
+			}
+			for k, v := range extra {
+				if s, ok := v.(string); ok {
+					q.Set(k, s)
+					continue
+				}
+				b, _ := json.Marshal(v)
+				q.Set(k, string(b))
+			}
+		} else if c.Filter != 0 {
+			q.Set("filter", strconv.FormatInt(c.Filter, 10))
+		} else {
+			q.Set("query_hash", `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]`)
+		}
+
+		data, err := client.Get(ctx, "tickets", q)
+		if err != nil {
+			return nil, err
+		}
+
+		var doc struct {
+			Tickets []map[string]any `json:"tickets"`
+			Meta    struct {
+				HasNext bool `json:"has_next"`
+			} `json:"meta"`
+		}
+		if err := json.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("parse tickets: %w", err)
+		}
+
+		tickets = append(tickets, doc.Tickets...)
+		if !doc.Meta.HasNext {
+			break
+		}
+		page++
+	}
+
+	return tickets, nil
+}
+
+// classifyTickets assigns each ticket to a category using a bounded worker
+// pool. The conversation fetch per ticket is the slow part and runs
+// concurrently; results are collected under a mutex.
+func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []map[string]any, threshold time.Time) (unassigned, staleAgent, awaitingCustomer []catTicket, _ error) {
+	workers := categoriesWorkers
+	if len(tickets) < workers {
+		workers = len(tickets)
+	}
+	if workers == 0 {
+		return nil, nil, nil, nil
+	}
+
+	work := make(chan map[string]any)
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		firstErr error
+		errOnce  sync.Once
+	)
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for t := range work {
+				entry, kind, err := classifyTicket(ctx, client, t, threshold)
+				if err != nil {
+					errOnce.Do(func() { firstErr = err })
+					continue
+				}
+				mu.Lock()
+				switch kind {
+				case catUnassigned:
+					unassigned = append(unassigned, entry)
+				case catStale:
+					staleAgent = append(staleAgent, entry)
+				case catCustomer:
+					awaitingCustomer = append(awaitingCustomer, entry)
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+
+	for _, t := range tickets {
+		work <- t
+	}
+	close(work)
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, nil, nil, firstErr
+	}
+	return unassigned, staleAgent, awaitingCustomer, nil
+}
+
+type catKind int
+
+const (
+	catNone catKind = iota
+	catUnassigned
+	catStale
+	catCustomer
+)
+
+// classifyTicket decides which category a single ticket belongs to.
+func classifyTicket(ctx context.Context, client *fsapi.Client, t map[string]any, threshold time.Time) (catTicket, catKind, error) {
+	id := t["id"].(float64)
+	entry := catTicket{id: id, ticket: t}
+
+	if r := t["responder_id"]; r == nil || r == float64(-1) {
+		return entry, catUnassigned, nil
+	}
+
+	latest, hasMsg, err := fetchLatestConversation(ctx, client, id)
+	if err != nil {
+		return entry, catNone, fmt.Errorf("ticket %.0f: %w", id, err)
+	}
+	if hasMsg {
+		entry.incoming = latest.Incoming
+		entry.lastMsgAt = latest.CreatedAt
+	} else {
+		created, ok := t["created_at"].(string)
+		if !ok {
+			return entry, catNone, fmt.Errorf("ticket %.0f: missing created_at", id)
+		}
+		at, err := time.Parse(time.RFC3339, created)
+		if err != nil {
+			return entry, catNone, fmt.Errorf("ticket %.0f: bad created_at %q: %w", id, created, err)
+		}
+		entry.lastMsgAt = at
+	}
+
+	if entry.incoming {
+		return entry, catCustomer, nil
+	}
+	if entry.lastMsgAt.Before(threshold) {
+		return entry, catStale, nil
+	}
+	return entry, catNone, nil
 }
 
 type latestConversation struct {
@@ -280,7 +366,7 @@ func printCatTable(entries []catTicket, client *fsapi.Client) {
 			"days":    fmt.Sprintf("%.1f", time.Since(ref).Hours()/24),
 		}
 	}
-	fmt.Print(RenderTable(categoriesColumns, rows))
+	fmt.Print(RenderTable(classifyColumns, rows))
 }
 
 func truncate(s string, max int) string {

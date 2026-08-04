@@ -20,7 +20,7 @@ Referer header):
 - `type` — `default`
 - `workspace_id` is NOT required in `query_hash` (the unresolved view omits it)
 
-`tickets categories` queries **all unresolved** tickets (no responder_id
+`tickets classify` queries **all unresolved** tickets (no responder_id
 condition) so the unassigned list can be derived:
 ```json
 [{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]
@@ -48,7 +48,7 @@ tickets:
 
 ## Unassigned detection
 
-`tickets categories` treats a ticket as unassigned when the response
+`tickets classify` treats a ticket as unassigned when the response
 `responder_id` is `null` or `-1`.
 
 ## Endpoints
@@ -79,6 +79,6 @@ tickets:
 ## Resolved
 
 - Conversations are returned **latest first** by default (user-confirmed). The
-  `tickets categories` command explicitly requests
+  `tickets classify` command explicitly requests
   `order_by=created_at&order_type=desc&per_page=1` and reads the first item as
   the latest message.
