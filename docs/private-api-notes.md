@@ -4,18 +4,23 @@ Reverse-engineered knowledge from HAR captures and user verification. The
 private API (`/api/_/`) is undocumented; these notes are the source of truth
 until verified against the real instance.
 
-## Filtering (query_hash / advanced_query_hash)
+## Filtering (advanced_query_hash)
 
-`query_hash` and `advanced_query_hash` are arrays of condition objects:
+`advanced_query_hash` is the ad-hoc filter parameter to use (user-preference;
+`query_hash` is reserved for saved-filter semantics and is not used here). It
+is an array of condition objects sent URL-encoded as a query parameter:
 
 ```json
-[{"condition": "status", "operator": "is_in", "value": ["2", "3"], "type": "default"}]
+[{"condition": "status", "operator": "is", "value": 0, "type": "default"}]
 ```
 
 - `condition` — field name (`status`, `responder_id`, `workspace_id`, ...)
 - `operator` — `is`, `is_in`, and others (unverified)
 - `value` — scalar for `is`, array for `is_in`
 - `type` — `default` (and likely `advanced`)
+
+The `tickets categorize` command sends its default unresolved filter via
+`advanced_query_hash`.
 
 ### Status values
 
@@ -40,7 +45,7 @@ Currently `tickets categorize` treats a ticket as unassigned when the response
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/api/_/tickets` | list; query: `filter`, `query_hash`, `advanced_query_hash`, `include`, `order_by`, `order_type`, `page`, `per_page`; returns `{tickets, meta}` |
+| GET | `/api/_/tickets` | list; query: `filter`, `advanced_query_hash`, `query_hash`, `include`, `order_by`, `order_type`, `page`, `per_page`; returns `{tickets, meta}` |
 | GET | `/api/_/tickets/{id}/conversations` | query: `include`, `per_page`, `order_by`, `order_type`; returns `{conversations, meta}` |
 | GET | `/api/_/ticket_filters/{id}` | returns `{ticket_filter}` |
 | GET | `/api/_/users/{id}` | returns `{user}` |
@@ -57,7 +62,8 @@ Currently `tickets categorize` treats a ticket as unassigned when the response
 ## Open questions (unverified)
 
 - What message kinds appear in conversations (notes, phone, system messages)?
-- Does the server accept raw conditions JSON as the `query_hash` query param?
+- Does the server accept raw conditions JSON as the `advanced_query_hash`
+  query param (URL-encoded), or does it expect a hash string?
 - `per_page` maximum for the private API.
 
 ## Resolved

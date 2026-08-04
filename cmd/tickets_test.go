@@ -222,7 +222,7 @@ func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	err := (&TicketsCategorizeCmd{QueryJSON: `{"filter":"123","query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 30}).Run(context.Background(), newTestClient(srv.URL))
+	err := (&TicketsCategorizeCmd{QueryJSON: `{"filter":"123","advanced_query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 30}).Run(context.Background(), newTestClient(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -231,12 +231,12 @@ func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
 		t.Errorf("expected filter=123 (unquoted), got %q", gotQuery.Get("filter"))
 	}
 	var gotHash, wantHash any
-	if err := json.Unmarshal([]byte(gotQuery.Get("query_hash")), &gotHash); err != nil {
-		t.Fatalf("query_hash is not JSON: %q", gotQuery.Get("query_hash"))
+	if err := json.Unmarshal([]byte(gotQuery.Get("advanced_query_hash")), &gotHash); err != nil {
+		t.Fatalf("advanced_query_hash is not JSON: %q", gotQuery.Get("advanced_query_hash"))
 	}
 	_ = json.Unmarshal([]byte(`[{"condition":"status","operator":"is","value":0,"type":"default"}]`), &wantHash)
 	if !reflect.DeepEqual(gotHash, wantHash) {
-		t.Errorf("expected query_hash %v, got %v", wantHash, gotHash)
+		t.Errorf("expected advanced_query_hash %v, got %v", wantHash, gotHash)
 	}
 	if gotQuery.Get("per_page") != "30" {
 		t.Errorf("expected per_page=30, got %q", gotQuery.Get("per_page"))
