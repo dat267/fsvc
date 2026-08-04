@@ -15,7 +15,7 @@ type CLI struct {
 	Subdomain     string                `help:"Freshservice subdomain (e.g. acme)"`
 	Cookie        string                `help:"Session cookie string"`
 	CSRFToken     string                `help:"CSRF token for write requests"`
-	BaseURL       string                `help:"Override API base URL"`
+	BaseURL       string                `help:"Override API base URL (hidden; inferred from subdomain)" hidden:""`
 	TimeZone      string                `help:"Timezone for business-day calculations (e.g. Europe/London)" env:"FSVC_TZ"`
 	Version       VersionCmd            `cmd:"" help:"Show version"`
 	Session       SessionCmd            `cmd:"" help:"Verify the session cookie"`
