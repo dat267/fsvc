@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+func TestNowInTZAt(t *testing.T) {
+	at := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
+
+	if got := NowInTZAt("", at); !got.Equal(at) {
+		t.Errorf("empty loc should return at unchanged, got %v", got)
+	}
+	if got := NowInTZAt("Invalid/Loc", at); !got.Equal(at) {
+		t.Errorf("invalid loc should return at unchanged, got %v", got)
+	}
+	got := NowInTZAt("America/New_York", at)
+	if got.Location().String() != "America/New_York" {
+		t.Errorf("expected New York location, got %v", got.Location())
+	}
+}
+
 func TestBusinessDaysBetween(t *testing.T) {
 	mon := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)      // Monday noon
 	fri := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)      // Friday noon

@@ -58,6 +58,30 @@ func TestClient_SubdomainBaseURL(t *testing.T) {
 	}
 }
 
+func TestClient_Update(t *testing.T) {
+	c := New(ClientConfig{Subdomain: "acme", Cookie: "helpdesk_node_session=abc", CSRF: "tok"})
+
+	c.Update(ClientConfig{Subdomain: "beta", Cookie: "new=1", CSRF: "newtok"})
+	if c.baseURL != "https://beta.freshservice.com" {
+		t.Errorf("expected beta base URL, got %s", c.baseURL)
+	}
+	if c.cookie != "new=1" || c.csrf != "newtok" {
+		t.Errorf("expected updated credentials, got cookie=%q csrf=%q", c.cookie, c.csrf)
+	}
+
+	// Empty cookie/CSRF clear the previous credentials.
+	c.Update(ClientConfig{Subdomain: "beta"})
+	if c.cookie != "" || c.csrf != "" {
+		t.Errorf("expected cleared credentials, got cookie=%q csrf=%q", c.cookie, c.csrf)
+	}
+
+	// Explicit BaseURL wins over Subdomain.
+	c.Update(ClientConfig{Subdomain: "beta", BaseURL: "http://x"})
+	if c.baseURL != "http://x" {
+		t.Errorf("expected BaseURL to win, got %s", c.baseURL)
+	}
+}
+
 func TestClient_MissingConfig(t *testing.T) {
 	c := New(ClientConfig{})
 	_, err := c.Get(context.Background(), "tickets", nil)

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"fsvc/internal/fsapi"
 )
@@ -161,6 +162,7 @@ func TestTicketsConvCmd(t *testing.T) {
 }
 
 func TestTicketsClassifyCmd(t *testing.T) {
+	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -276,6 +278,7 @@ func TestTicketsClassifyCmd_CustomFilterSingleFetch(t *testing.T) {
 }
 
 func TestTicketsClassifyCmd_Pagination(t *testing.T) {
+	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
 	var mu sync.Mutex
 	calls := 0
 	var pages []string
@@ -365,6 +368,7 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 }
 
 func TestTicketsFillEndDatesCmd(t *testing.T) {
+	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
 	var putCalls []struct {
 		Path string
 		Body []byte

@@ -44,7 +44,8 @@ func New(cfg ClientConfig) *Client {
 }
 
 // Update reconfigures the connection credentials. Called after Kong resolves
-// flags/env/config-file values, before commands run.
+// flags/env/config-file values, before commands run. Empty cookie/CSRF values
+// clear the previous credentials.
 func (c *Client) Update(cfg ClientConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -53,12 +54,8 @@ func (c *Client) Update(cfg ClientConfig) {
 	} else if cfg.Subdomain != "" {
 		c.baseURL = "https://" + cfg.Subdomain + ".freshservice.com"
 	}
-	if cfg.Cookie != "" {
-		c.cookie = cfg.Cookie
-	}
-	if cfg.CSRF != "" {
-		c.csrf = cfg.CSRF
-	}
+	c.cookie = cfg.Cookie
+	c.csrf = cfg.CSRF
 }
 
 func (c *Client) SetCSRF(token string) {

@@ -4,7 +4,17 @@ import (
 	"bytes"
 	"os"
 	"testing"
+	"time"
 )
+
+// setNow pins the clock for the duration of the test so time-sensitive
+// commands behave deterministically regardless of when the suite runs.
+func setNow(t *testing.T, at time.Time) {
+	t.Helper()
+	old := now
+	now = func() time.Time { return at }
+	t.Cleanup(func() { now = old })
+}
 
 // captureStdout runs fn and returns everything written to os.Stdout.
 func captureStdout(t *testing.T, fn func()) string {

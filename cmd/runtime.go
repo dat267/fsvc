@@ -22,9 +22,12 @@ var appName = "fsvc"
 // tz is set by Execute from the --tz flag before commands run.
 var tz string
 
+// now returns the current time; tests may replace it to pin the clock.
+var now = time.Now
+
 // nowInTZ returns the current time in the configured timezone (or local if unset).
 func nowInTZ() time.Time {
-	return biz.NowInTZ(tz)
+	return biz.NowInTZAt(tz, now())
 }
 
 const configFileFlagName = "config-file"

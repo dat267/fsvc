@@ -3,28 +3,26 @@
 // dependencies so it can be tested in isolation.
 package biz
 
-import (
-	"sync"
-	"time"
-)
-
-var locCache sync.Map
+import "time"
 
 // NowInTZ returns the current time in the given IANA location, or local time
 // when loc is empty or invalid.
 func NowInTZ(loc string) time.Time {
+	return NowInTZAt(loc, time.Now())
+}
+
+// NowInTZAt converts t to the given IANA location, returning t unchanged when
+// loc is empty or invalid. time.LoadLocation caches locations internally, so
+// repeated calls are cheap.
+func NowInTZAt(loc string, t time.Time) time.Time {
 	if loc == "" {
-		return time.Now()
-	}
-	if val, ok := locCache.Load(loc); ok {
-		return time.Now().In(val.(*time.Location))
+		return t
 	}
 	l, err := time.LoadLocation(loc)
 	if err != nil {
-		return time.Now()
+		return t
 	}
-	locCache.Store(loc, l)
-	return time.Now().In(l)
+	return t.In(l)
 }
 
 // AddBusinessDays adds n weekdays, skipping weekends.
