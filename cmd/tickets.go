@@ -154,10 +154,8 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 			}
 		} else if c.Filter != 0 {
 			q.Set("filter", strconv.FormatInt(c.Filter, 10))
-		} else if cfgDefaultFilter != 0 {
-			q.Set("filter", strconv.FormatInt(cfgDefaultFilter, 10))
 		} else {
-			return fmt.Errorf("no filter configured: set default-filter with 'fsvc config set default-filter <id>' or pass --filter")
+			q.Set("query_hash", `[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`)
 		}
 
 		data, err := client.Get(ctx, "tickets", q)
@@ -524,14 +522,11 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) 
 // ---- helpers ----------------------------------------------------------------
 
 func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn func(id float64, ticket map[string]any) error) error {
-	if cfgDefaultFilter == 0 {
-		return fmt.Errorf("no filter configured: set default-filter with 'fsvc config set default-filter <id>'")
-	}
 	page := 1
 	for {
 		q := url.Values{"page": {strconv.Itoa(page)}, "per_page": {strconv.Itoa(perPage)},
 			"order_by": {"created_at"}, "order_type": {"asc"},
-			"filter": {strconv.FormatInt(cfgDefaultFilter, 10)}}
+			"query_hash": {`[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`}}
 		data, err := client.Get(ctx, "tickets", q)
 		if err != nil {
 			return err
