@@ -387,7 +387,7 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client
 
 type TicketsFillEndDatesCmd struct {
 	Yes     bool    `help:"Skip confirmation prompt" name:"yes" short:"y"`
-	Days    float64 `help:"Days from now to set as planned end date" default:"7"`
+	Days    float64 `help:"Days from now to set as planned end date" default:"3"`
 	PerPage int     `help:"Tickets per page" default:"100"`
 }
 
