@@ -12,6 +12,7 @@ import (
 
 	"github.com/alecthomas/kong"
 
+	"fsvc/internal/biz"
 	"fsvc/internal/fsapi"
 )
 
@@ -23,75 +24,13 @@ var tz string
 
 // nowInTZ returns the current time in the configured timezone (or local if unset).
 func nowInTZ() time.Time {
-	if tz == "" {
-		return time.Now()
-	}
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: unknown timezone %q, falling back to local\n", tz)
-		tz = ""
-		return time.Now()
-	}
-	return time.Now().In(loc)
+	return biz.NowInTZ(tz)
 }
 
-// addBusinessDays adds n weekdays, skipping weekends.
-func addBusinessDays(t time.Time, n int) time.Time {
-	for i := 0; i < n; {
-		t = t.Add(24 * time.Hour)
-		if t.Weekday() != time.Saturday && t.Weekday() != time.Sunday {
-			i++
-		}
-	}
-	return t
-}
-
-// subBusinessDays subtracts n weekdays, skipping weekends.
-func subBusinessDays(t time.Time, n int) time.Time {
-	for i := 0; i < n; {
-		t = t.Add(-24 * time.Hour)
-		if t.Weekday() != time.Saturday && t.Weekday() != time.Sunday {
-			i++
-		}
-	}
-	return t
-}
-
-// businessDaysBetween returns the number of weekdays between from and to,
-// as a float. Weekends are skipped; partial start/end days count
-// fractionally.
-func businessDaysBetween(from, to time.Time) float64 {
-	if to.Before(from) {
-		from, to = to, from
-	}
-
-	loc := to.Location()
-	start := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, loc)
-	end := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, loc)
-
-	// Whole weekdays on [start, end).
-	full := 0.0
-	for d := start; d.Before(end); d = d.AddDate(0, 0, 1) {
-		if isWeekday(d) {
-			full++
-		}
-	}
-
-	// The start day is partially elapsed; the end day is partially complete.
-	fracFrom := 0.0
-	if isWeekday(from) {
-		fracFrom = from.Sub(start).Minutes() / 1440
-	}
-	fracTo := 0.0
-	if isWeekday(to) {
-		fracTo = to.Sub(end).Minutes() / 1440
-	}
-	return full - fracFrom + fracTo
-}
-
-func isWeekday(t time.Time) bool {
-	return t.Weekday() != time.Saturday && t.Weekday() != time.Sunday
-}
+// Business-day helpers delegate to the pure biz package.
+func addBusinessDays(t time.Time, n int) time.Time   { return biz.AddBusinessDays(t, n) }
+func subBusinessDays(t time.Time, n int) time.Time   { return biz.SubBusinessDays(t, n) }
+func businessDaysBetween(from, to time.Time) float64 { return biz.BusinessDaysBetween(from, to) }
 
 const configFileFlagName = "config-file"
 
