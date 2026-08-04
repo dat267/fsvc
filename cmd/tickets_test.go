@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -184,5 +185,99 @@ func TestTicketsListCmd_ServerError(t *testing.T) {
 	err := (&TicketsListCmd{}).Run(context.Background(), newTestClient(srv.URL))
 	if err == nil || !strings.Contains(err.Error(), "HTTP 500") {
 		t.Errorf("expected HTTP 500 error, got %v", err)
+	}
+}
+
+func TestTicketsUpdateCmd_Pairs(t *testing.T) {
+	var gotBody []byte
+	var gotCSRF string
+
+	srv := serveFixture(t, "put_ticket.json", func(r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/_/tickets/10100" {
+			t.Errorf("expected path /api/_/tickets/10100, got %s", r.URL.Path)
+		}
+		if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+			t.Errorf("expected application/json content type, got %q", ct)
+		}
+		gotCSRF = r.Header.Get("X-CSRF-Token")
+		var err error
+		gotBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+		}
+	})
+
+	out := captureStdout(t, func() {
+		cmd := &TicketsUpdateCmd{
+			ID:        10100,
+			Pairs:     []string{"priority=1", "group_id=4001", "custom_fields.type_of_ticket_received=Duplicate"},
+			CSRFToken: "tok123",
+		}
+		if err := cmd.Run(context.Background(), newTestClient(srv.URL)); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if gotCSRF != "tok123" {
+		t.Errorf("expected X-CSRF-Token tok123, got %q", gotCSRF)
+	}
+	wantBody := `{"custom_fields":{"type_of_ticket_received":"Duplicate"},"group_id":4001,"priority":1}`
+	if string(gotBody) != wantBody {
+		t.Errorf("expected body %s, got %s", wantBody, gotBody)
+	}
+	if !strings.Contains(out, "10100") {
+		t.Errorf("expected updated ticket id in output:\n%s", out)
+	}
+}
+
+func TestTicketsUpdateCmd_RawBody(t *testing.T) {
+	var gotBody []byte
+
+	srv := serveFixture(t, "put_ticket.json", func(r *http.Request) {
+		var err error
+		gotBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+		}
+	})
+
+	raw := `{"priority":1,"br_validation_excludes":"eyJhbGciOiJIUzI1NiJ9.eyJvcHRpb25hbCI6W119"}`
+	err := (&TicketsUpdateCmd{
+		ID:    10100,
+		Body:  raw,
+		Pairs: []string{"priority=9"},
+	}).Run(context.Background(), newTestClient(srv.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(gotBody) != raw {
+		t.Errorf("expected verbatim body %s, got %s", raw, gotBody)
+	}
+}
+
+func TestTicketsUpdateCmd_NothingToUpdate(t *testing.T) {
+	srv := serveFixture(t, "put_ticket.json", nil)
+	err := (&TicketsUpdateCmd{ID: 10100}).Run(context.Background(), newTestClient(srv.URL))
+	if err == nil || !strings.Contains(err.Error(), "nothing to update") {
+		t.Errorf("expected 'nothing to update' error, got %v", err)
+	}
+}
+
+func TestTicketsUpdateCmd_InvalidBody(t *testing.T) {
+	srv := serveFixture(t, "put_ticket.json", nil)
+	err := (&TicketsUpdateCmd{ID: 10100, Body: "not json"}).Run(context.Background(), newTestClient(srv.URL))
+	if err == nil || !strings.Contains(err.Error(), "invalid JSON") {
+		t.Errorf("expected invalid JSON error, got %v", err)
+	}
+}
+
+func TestTicketsUpdateCmd_InvalidPair(t *testing.T) {
+	srv := serveFixture(t, "put_ticket.json", nil)
+	err := (&TicketsUpdateCmd{ID: 10100, Pairs: []string{"noequals"}}).Run(context.Background(), newTestClient(srv.URL))
+	if err == nil {
+		t.Error("expected error for invalid pair")
 	}
 }

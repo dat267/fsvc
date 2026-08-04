@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -13,6 +15,7 @@ type TicketsCmdGroup struct {
 	List           TicketsListCmd      `cmd:"" help:"List tickets"`
 	Conversations  TicketsConvCmd      `cmd:"" help:"List conversations for a ticket"`
 	RequestedItems TicketsRequestedCmd `cmd:"" help:"Show a requested item for a ticket"`
+	Update         TicketsUpdateCmd    `cmd:"" help:"Update a ticket"`
 }
 
 type TicketsListCmd struct {
@@ -105,4 +108,54 @@ func (c *TicketsRequestedCmd) Run(ctx context.Context, client *fsapi.Client) err
 		return err
 	}
 	return Print(data, "requested_item", ticketsRequestedColumns, c.Format)
+}
+
+type TicketsUpdateCmd struct {
+	Format    string   `help:"Output format" enum:"table,json,csv" default:"table"`
+	Body      string   `help:"Raw JSON body (overrides key=value pairs)"`
+	CSRFToken string   `help:"CSRF token (overrides config value)"`
+	ID        int64    `arg:"" help:"Ticket ID"`
+	Pairs     []string `arg:"" help:"key=value pairs to update (e.g. priority=1)"`
+}
+
+var ticketsUpdateColumns = []Column{
+	{Header: "ID", Path: "id"},
+	{Header: "Subject", Path: "subject"},
+	{Header: "Status", Path: "status"},
+	{Header: "Priority", Path: "priority"},
+	{Header: "Group", Path: "group_id"},
+	{Header: "Responder", Path: "responder_id"},
+	{Header: "Department", Path: "department_id"},
+	{Header: "Updated", Path: "updated_at"},
+}
+
+func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error {
+	var payload []byte
+	var err error
+
+	switch {
+	case c.Body != "":
+		if !json.Valid([]byte(c.Body)) {
+			return fmt.Errorf("invalid JSON in --body")
+		}
+		payload = []byte(c.Body)
+	case len(c.Pairs) > 0:
+		payload, err = fsapi.BuildBody(c.Pairs)
+		if err != nil {
+			return err
+		}
+	default:
+		return errors.New("nothing to update: provide key=value pairs or --body")
+	}
+
+	if c.CSRFToken != "" {
+		client.SetCSRF(c.CSRFToken)
+	}
+
+	path := fmt.Sprintf("tickets/%d", c.ID)
+	data, err := client.Put(ctx, path, payload)
+	if err != nil {
+		return err
+	}
+	return Print(data, "ticket", ticketsUpdateColumns, c.Format)
 }
