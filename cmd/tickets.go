@@ -104,19 +104,10 @@ type TicketsCategoriesCmd struct {
 	Filter        int64  `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
 }
 
-var categorizeColumns = []Column{
-	{Header: "ID", Path: "id"},
+var categoriesColumns = []Column{
 	{Header: "Subject", Path: "subject"},
-	{Header: "Priority", Path: "priority"},
-	{Header: "Last msg", Path: "last_msg_at"},
-	{Header: "Created", Path: "created_at"},
-}
-
-var categorizeColumnsNoMsg = []Column{
-	{Header: "ID", Path: "id"},
-	{Header: "Subject", Path: "subject"},
-	{Header: "Priority", Path: "priority"},
-	{Header: "Created", Path: "created_at"},
+	{Header: "Link", Path: "link"},
+	{Header: "Days", Path: "days"},
 }
 
 type catTicket struct {
@@ -225,11 +216,11 @@ func (c *TicketsCategoriesCmd) Run(ctx context.Context, client *fsapi.Client) er
 	})
 
 	fmt.Printf("# Unassigned (%d)\n", len(unassigned))
-	printCatTable(unassigned, categorizeColumnsNoMsg)
+	printCatTable(unassigned, client)
 	fmt.Printf("\n# Agent replied > %d business days, awaiting customer (%d)\n", c.OlderThanDays, len(staleAgent))
-	printCatTable(staleAgent, categorizeColumns)
+	printCatTable(staleAgent, client)
 	fmt.Printf("\n# Customer replied, awaiting agent (%d)\n", len(awaitingCustomer))
-	printCatTable(awaitingCustomer, categorizeColumns)
+	printCatTable(awaitingCustomer, client)
 	return nil
 }
 
@@ -267,23 +258,36 @@ func fetchLatestConversation(ctx context.Context, client *fsapi.Client, ticketID
 	return latestConversation{Incoming: doc.Conversations[0].Incoming, CreatedAt: at}, true, nil
 }
 
-func printCatTable(entries []catTicket, cols []Column) {
+func printCatTable(entries []catTicket, client *fsapi.Client) {
 	if len(entries) == 0 {
 		fmt.Println("(none)")
 		return
 	}
 	rows := make([]map[string]any, len(entries))
 	for i, e := range entries {
-		row := map[string]any{
-			"id":         e.id,
-			"subject":    Lookup(e.ticket, "subject"),
-			"priority":   Lookup(e.ticket, "priority"),
-			"created_at": Lookup(e.ticket, "created_at"),
+		ref := e.lastMsgAt
+		if ref.IsZero() {
+			if created, ok := Lookup(e.ticket, "created_at").(string); ok {
+				if at, err := time.Parse(time.RFC3339, created); err == nil {
+					ref = at
+				}
+			}
 		}
-		row["last_msg_at"] = e.lastMsgAt.Format("2006-01-02 15:04")
-		rows[i] = row
+		subject, _ := Lookup(e.ticket, "subject").(string)
+		rows[i] = map[string]any{
+			"subject": truncate(subject, 40),
+			"link":    fmt.Sprintf("%s/a/tickets/%.0f", client.BaseURL(), e.id),
+			"days":    fmt.Sprintf("%.1f", time.Since(ref).Hours()/24),
+		}
 	}
-	fmt.Print(RenderTable(cols, rows))
+	fmt.Print(RenderTable(categoriesColumns, rows))
+}
+
+func truncate(s string, max int) string {
+	if max <= 3 || len(s) <= max {
+		return s
+	}
+	return s[:max-3] + "..."
 }
 
 func ts(v any) string {

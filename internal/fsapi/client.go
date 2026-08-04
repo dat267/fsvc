@@ -58,6 +58,10 @@ func (c *Client) SetCSRF(token string) {
 	c.csrf = token
 }
 
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
 func (c *Client) Get(ctx context.Context, path string, query url.Values) ([]byte, error) {
 	return c.Do(ctx, http.MethodGet, path, query, nil)
 }

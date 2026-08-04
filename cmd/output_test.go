@@ -141,3 +141,12 @@ func TestPrettyJSON(t *testing.T) {
 		t.Error("expected error for malformed JSON")
 	}
 }
+
+func TestTruncate(t *testing.T) {
+	if got := truncate("short", 40); got != "short" {
+		t.Errorf("expected short unchanged, got %q", got)
+	}
+	if got := truncate("this is a very long subject line that should be truncated", 20); got != "this is a very lo..." {
+		t.Errorf("expected truncated with ellipsis, got %q", got)
+	}
+}
