@@ -169,23 +169,3 @@ func TestClient_CookieJarRotation(t *testing.T) {
 		t.Errorf("expected rotated session cookie in second request, got %q", secondCookie)
 	}
 }
-
-func TestClient_GetJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprint(w, `{"meta":{"count":7}}`)
-	}))
-	defer srv.Close()
-
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "x=1"})
-	var out struct {
-		Meta struct {
-			Count int `json:"count"`
-		} `json:"meta"`
-	}
-	if err := c.GetJSON(context.Background(), "tickets", nil, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if out.Meta.Count != 7 {
-		t.Errorf("expected count 7, got %d", out.Meta.Count)
-	}
-}

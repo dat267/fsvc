@@ -3,7 +3,6 @@ package fsapi
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -68,14 +67,6 @@ func (c *Client) Get(ctx context.Context, path string, query url.Values) ([]byte
 
 func (c *Client) Put(ctx context.Context, path string, body []byte) ([]byte, error) {
 	return c.Do(ctx, http.MethodPut, path, nil, body)
-}
-
-func (c *Client) GetJSON(ctx context.Context, path string, query url.Values, out any) error {
-	data, err := c.Get(ctx, path, query)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, out)
 }
 
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body []byte) ([]byte, error) {

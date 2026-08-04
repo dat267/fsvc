@@ -173,48 +173,34 @@ const (
 )
 
 // collectTickets paginates through the tickets list, collecting every page.
+// collectTickets paginates through the tickets list, collecting every page.
 func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.Client, defaultHash string) ([]fsapi.Ticket, error) {
-	var tickets []fsapi.Ticket
-	page := c.Page
+	// Build the base query once; only the page number changes per iteration.
+	q := url.Values{}
+	q.Set("per_page", strconv.Itoa(c.PerPage))
+	q.Set("order_by", "created_at")
+	q.Set("order_type", "asc")
 
-	for {
-		q := url.Values{}
-		q.Set("page", strconv.Itoa(page))
-		q.Set("per_page", strconv.Itoa(c.PerPage))
-		q.Set("order_by", "created_at")
-		q.Set("order_type", "asc")
-
-		if c.QueryJSON != "" {
-			var extra map[string]any
-			if err := json.Unmarshal([]byte(c.QueryJSON), &extra); err != nil {
-				return nil, fmt.Errorf("invalid --query-json: %w", err)
+	if c.QueryJSON != "" {
+		var extra map[string]any
+		if err := json.Unmarshal([]byte(c.QueryJSON), &extra); err != nil {
+			return nil, fmt.Errorf("invalid --query-json: %w", err)
+		}
+		for k, v := range extra {
+			if s, ok := v.(string); ok {
+				q.Set(k, s)
+				continue
 			}
-			for k, v := range extra {
-				if s, ok := v.(string); ok {
-					q.Set(k, s)
-					continue
-				}
-				b, _ := json.Marshal(v)
-				q.Set(k, string(b))
-			}
-		} else if c.Filter != 0 {
-			q.Set("filter", strconv.FormatInt(c.Filter, 10))
-		} else {
-			q.Set("query_hash", defaultHash)
+			b, _ := json.Marshal(v)
+			q.Set(k, string(b))
 		}
-
-		pageTickets, hasNext, err := client.ListTickets(ctx, q)
-		if err != nil {
-			return nil, err
-		}
-		tickets = append(tickets, pageTickets...)
-		if !hasNext {
-			break
-		}
-		page++
+	} else if c.Filter != 0 {
+		q.Set("filter", strconv.FormatInt(c.Filter, 10))
+	} else {
+		q.Set("query_hash", defaultHash)
 	}
 
-	return tickets, nil
+	return paginateTickets(ctx, client, q, c.Page)
 }
 
 // classifyTickets assigns each ticket to a category using a bounded worker
@@ -370,11 +356,13 @@ func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error 
 	return Print(data, "ticket", ticketsUpdateColumns, c.Format)
 }
 
+// pendingChange describes a single ticket update for preview and apply.
 type pendingChange struct {
 	id    float64
 	field string
 	from  string
 	to    string
+	body  map[string]any
 }
 
 func confirmApply(n int) bool {
@@ -402,15 +390,19 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client
 			return nil
 		}
 		created := t.CreatedAt.Format(time.RFC3339)
-		changes = append(changes, pendingChange{id: t.ID, field: "planned_start_date", from: "nil", to: created})
+		changes = append(changes, pendingChange{
+			id:    t.ID,
+			field: "planned_start_date",
+			from:  "nil",
+			to:    created,
+			body:  map[string]any{"planned_start_date": created},
+		})
 		return nil
 	}); err != nil {
 		return err
 	}
 
-	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
-		return json.Marshal(map[string]string{ch.field: ch.to})
-	})
+	return previewAndApply(ctx, client, changes, c.Yes)
 }
 
 // ---- fill-end-dates ---------------------------------------------------------
@@ -438,15 +430,19 @@ func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) 
 			}
 		}
 
-		changes = append(changes, pendingChange{id: t.ID, field: "planned_end_date", from: cur, to: target})
+		changes = append(changes, pendingChange{
+			id:    t.ID,
+			field: "planned_end_date",
+			from:  cur,
+			to:    target,
+			body:  map[string]any{"planned_end_date": target},
+		})
 		return nil
 	}); err != nil {
 		return err
 	}
 
-	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
-		return json.Marshal(map[string]string{ch.field: ch.to})
-	})
+	return previewAndApply(ctx, client, changes, c.Yes)
 }
 
 // ---- sync-ui ----------------------------------------------------------------
@@ -473,22 +469,14 @@ func (c *TicketsSyncUrgencyImpactCmd) Run(ctx context.Context, client *fsapi.Cli
 			field: fmt.Sprintf("priority=%d", t.Priority),
 			from:  fmt.Sprintf("urgency=%d impact=%d", t.Urgency, t.Impact),
 			to:    fmt.Sprintf("urgency=%d impact=%d", targetU, targetI),
+			body:  map[string]any{"urgency": targetU, "impact": targetI},
 		})
 		return nil
 	}); err != nil {
 		return err
 	}
 
-	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
-		parts := strings.Split(ch.to, " ")
-		m := map[string]any{}
-		for _, p := range parts {
-			kv := strings.Split(p, "=")
-			v, _ := strconv.ParseFloat(kv[1], 64)
-			m[kv[0]] = v
-		}
-		return json.Marshal(m)
-	})
+	return previewAndApply(ctx, client, changes, c.Yes)
 }
 
 // ---- sync-priority ----------------------------------------------------------
@@ -512,17 +500,14 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) 
 			field: fmt.Sprintf("urgency=%d impact=%d", t.Urgency, t.Impact),
 			from:  fmt.Sprintf("priority=%d", t.Priority),
 			to:    fmt.Sprintf("priority=%d", target),
+			body:  map[string]any{"priority": target},
 		})
 		return nil
 	}); err != nil {
 		return err
 	}
 
-	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
-		parts := strings.Split(ch.to, "=")
-		v, _ := strconv.ParseFloat(parts[1], 64)
-		return json.Marshal(map[string]any{parts[0]: v})
-	})
+	return previewAndApply(ctx, client, changes, c.Yes)
 }
 
 // ---- helpers ----------------------------------------------------------------
@@ -546,12 +531,26 @@ func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn 
 // collectMyTickets paginates the self-assigned unresolved ticket list,
 // returning each ticket's list-level data.
 func collectMyTickets(ctx context.Context, client *fsapi.Client, perPage int) ([]fsapi.Ticket, error) {
+	q := url.Values{"per_page": {strconv.Itoa(perPage)},
+		"order_by": {"created_at"}, "order_type": {"asc"},
+		"query_hash": {`[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`}}
+	return paginateTickets(ctx, client, q, 1)
+}
+
+// paginateTickets walks every page of a tickets query, appending results until
+// the API reports no further pages. baseQuery may omit the page parameter.
+func paginateTickets(ctx context.Context, client *fsapi.Client, baseQuery url.Values, startPage int) ([]fsapi.Ticket, error) {
 	var tickets []fsapi.Ticket
-	page := 1
+	page := startPage
 	for {
-		q := url.Values{"page": {strconv.Itoa(page)}, "per_page": {strconv.Itoa(perPage)},
-			"order_by": {"created_at"}, "order_type": {"asc"},
-			"query_hash": {`[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`}}
+		q := url.Values{}
+		for k, vs := range baseQuery {
+			for _, v := range vs {
+				q.Add(k, v)
+			}
+		}
+		q.Set("page", strconv.Itoa(page))
+
 		pageTickets, hasNext, err := client.ListTickets(ctx, q)
 		if err != nil {
 			return nil, err
@@ -565,7 +564,7 @@ func collectMyTickets(ctx context.Context, client *fsapi.Client, perPage int) ([
 	return tickets, nil
 }
 
-func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendingChange, yes bool, buildBody func(pendingChange) ([]byte, error)) error {
+func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendingChange, yes bool) error {
 	if len(changes) == 0 {
 		fmt.Println("No changes needed.")
 		return nil
@@ -581,7 +580,7 @@ func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendin
 	// Build all payloads up front (sequential, cheap).
 	payloads := make([][]byte, len(changes))
 	for i, ch := range changes {
-		payload, err := buildBody(ch)
+		payload, err := json.Marshal(ch.body)
 		if err != nil {
 			return fmt.Errorf("build payload for ticket %.0f: %w", ch.id, err)
 		}
