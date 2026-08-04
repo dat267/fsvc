@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -292,23 +293,26 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 		Path string
 		Body []byte
 	}
+	var putMu sync.Mutex
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20}],"meta":{"has_next":false}}`)
 	})
-	// Ticket 10: planned_start_date=null, first_responded_at populated → fillable
+	// Ticket 10: planned_start_date=null, created_at populated → fillable
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_start_date":null,"stats":{"first_responded_at":"2026-08-01T12:00:00Z"}}}`)
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_start_date":null,"created_at":"2026-08-01T12:00:00Z"}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
+			putMu.Lock()
 			putCalls = append(putCalls, struct {
 				Path string
 				Body []byte
 			}{Path: r.URL.Path, Body: b})
+			putMu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
 		}
@@ -316,7 +320,7 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 	// Ticket 20: planned_start_date already set → skip
 	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"planned_start_date":"2025-01-01T00:00:00Z","stats":{}}}`)
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"planned_start_date":"2025-01-01T00:00:00Z","created_at":"2026-08-01T12:00:00Z"}}`)
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -347,6 +351,7 @@ func TestTicketsFillEndDatesCmd(t *testing.T) {
 		Path string
 		Body []byte
 	}
+	var putMu sync.Mutex
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -359,10 +364,12 @@ func TestTicketsFillEndDatesCmd(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_end_date":null}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
+			putMu.Lock()
 			putCalls = append(putCalls, struct {
 				Path string
 				Body []byte
 			}{Path: r.URL.Path, Body: b})
+			putMu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
 		}
@@ -377,10 +384,12 @@ func TestTicketsFillEndDatesCmd(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"planned_end_date":"2020-01-01T00:00:00Z"}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
+			putMu.Lock()
 			putCalls = append(putCalls, struct {
 				Path string
 				Body []byte
 			}{Path: r.URL.Path, Body: b})
+			putMu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":30}}`)
 		}
@@ -525,6 +534,7 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 		Path string
 		Body []byte
 	}
+	var putMu sync.Mutex
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -536,10 +546,12 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":2,"urgency":2,"impact":2}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
+			putMu.Lock()
 			putCalls = append(putCalls, struct {
 				Path string
 				Body []byte
 			}{Path: r.URL.Path, Body: b})
+			putMu.Unlock()
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
 		}
 	})
@@ -549,10 +561,12 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"priority":3,"urgency":1,"impact":1}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
+			putMu.Lock()
 			putCalls = append(putCalls, struct {
 				Path string
 				Body []byte
 			}{Path: r.URL.Path, Body: b})
+			putMu.Unlock()
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":20}}`)
 		}
 	})
@@ -592,6 +606,7 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 		Path string
 		Body []byte
 	}
+	var putMu sync.Mutex
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -603,10 +618,12 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":2,"urgency":3,"impact":3}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
+			putMu.Lock()
 			putCalls = append(putCalls, struct {
 				Path string
 				Body []byte
 			}{Path: r.URL.Path, Body: b})
+			putMu.Unlock()
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
 		}
 	})
@@ -618,10 +635,12 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"priority":3,"urgency":3,"impact":1}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
+			putMu.Lock()
 			putCalls = append(putCalls, struct {
 				Path string
 				Body []byte
 			}{Path: r.URL.Path, Body: b})
+			putMu.Unlock()
 			_, _ = fmt.Fprint(w, `{"ticket":{"id":30}}`)
 		}
 	})
@@ -693,6 +712,31 @@ func TestSubBusinessDays(t *testing.T) {
 		got := subBusinessDays(tt.start, tt.n).Format("2006-01-02")
 		if got != tt.want {
 			t.Errorf("subBusinessDays(%s, %d) = %s, want %s", tt.start.Format("2006-01-02"), tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestBusinessDaysBetween(t *testing.T) {
+	mon := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)      // Monday noon
+	fri := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)      // Friday noon
+	nextMon := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC) // next Monday noon
+
+	tests := []struct {
+		from, to time.Time
+		want     float64
+	}{
+		{mon, mon, 0},                  // same instant
+		{mon, mon.AddDate(0, 0, 1), 1}, // Mon→Tue = 1
+		{mon, fri, 4},                  // Mon→Fri = 4
+		{fri, nextMon, 1},              // Fri→Mon skips weekend = 1
+		{mon, nextMon, 5},              // full week = 5
+		{fri, fri, 0},                  // same day
+	}
+
+	for _, tt := range tests {
+		got := businessDaysBetween(tt.from, tt.to)
+		if got != tt.want {
+			t.Errorf("businessDaysBetween(%v, %v) = %v, want %v", tt.from.Format(time.RFC3339), tt.to.Format(time.RFC3339), got, tt.want)
 		}
 	}
 }

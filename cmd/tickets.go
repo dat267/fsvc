@@ -20,7 +20,7 @@ type TicketsCmdGroup struct {
 	List              TicketsListCmd              `cmd:"" help:"List tickets"`
 	Conversations     TicketsConvCmd              `cmd:"" help:"List conversations for a ticket"`
 	Classify          TicketsClassifyCmd          `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
-	FillStartDates    TicketsFillStartDatesCmd    `cmd:"" help:"Backfill planned_start_date from first_responded_at on your unresolved tickets"`
+	FillStartDates    TicketsFillStartDatesCmd    `cmd:"" help:"Backfill planned_start_date from created_at on your unresolved tickets"`
 	FillEndDates      TicketsFillEndDatesCmd      `cmd:"" help:"Bulk-set planned_end_date to now + N days on your unresolved tickets"`
 	SyncPriority      TicketsSyncPriorityCmd      `cmd:"" help:"Sync priority from urgency+impact via standard matrix"`
 	SyncUrgencyImpact TicketsSyncUrgencyImpactCmd `cmd:"" help:"Set urgency+impact to the minimum pair that satisfies the current priority"`
@@ -387,7 +387,7 @@ func printCatTable(entries []catTicket, client *fsapi.Client) {
 		rows[i] = map[string]any{
 			"subject": truncate(subject, 40),
 			"link":    fmt.Sprintf("%s/a/tickets/%.0f", client.BaseURL(), e.id),
-			"days":    fmt.Sprintf("%.1f", time.Since(ref).Hours()/24),
+			"days":    fmt.Sprintf("%.1f", businessDaysBetween(ref, nowInTZ())),
 		}
 	}
 	fmt.Print(RenderTable(classifyColumns, rows))
@@ -482,12 +482,11 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client
 		if !hasPSD || psd != nil {
 			return nil
 		}
-		stats, _ := ticket["stats"].(map[string]any)
-		firstResp, _ := stats["first_responded_at"].(string)
-		if firstResp == "" {
+		created, _ := ticket["created_at"].(string)
+		if created == "" {
 			return nil
 		}
-		changes = append(changes, pendingChange{id: id, field: "planned_start_date", from: "nil", to: firstResp})
+		changes = append(changes, pendingChange{id: id, field: "planned_start_date", from: "nil", to: created})
 		return nil
 	}); err != nil {
 		return err
@@ -636,7 +635,30 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) 
 
 // ---- helpers ----------------------------------------------------------------
 
+// forEachMyTicket paginates through self-assigned unresolved tickets,
+// fetches each full ticket concurrently, then calls fn sequentially for each.
 func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn func(id float64, ticket map[string]any) error) error {
+	ids, err := collectMyTicketIDs(ctx, client, perPage)
+	if err != nil {
+		return err
+	}
+
+	fullTickets, err := fetchFullTickets(ctx, client, ids)
+	if err != nil {
+		return err
+	}
+
+	for i, id := range ids {
+		if err := fn(id, fullTickets[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// collectMyTicketIDs paginates the self-assigned unresolved ticket list.
+func collectMyTicketIDs(ctx context.Context, client *fsapi.Client, perPage int) ([]float64, error) {
+	var ids []float64
 	page := 1
 	for {
 		q := url.Values{"page": {strconv.Itoa(page)}, "per_page": {strconv.Itoa(perPage)},
@@ -644,7 +666,7 @@ func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn 
 			"query_hash": {`[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`}}
 		data, err := client.Get(ctx, "tickets", q)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		var doc struct {
@@ -656,31 +678,75 @@ func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn 
 			} `json:"meta"`
 		}
 		if err := json.Unmarshal(data, &doc); err != nil {
-			return fmt.Errorf("parse tickets list: %w", err)
+			return nil, fmt.Errorf("parse tickets list: %w", err)
 		}
 
 		for _, t := range doc.Tickets {
-			fullData, err := client.Get(ctx, fmt.Sprintf("tickets/%.0f", t.ID), nil)
-			if err != nil {
-				return fmt.Errorf("get ticket %.0f: %w", t.ID, err)
-			}
-			var full struct {
-				Ticket map[string]any `json:"ticket"`
-			}
-			if err := json.Unmarshal(fullData, &full); err != nil {
-				return fmt.Errorf("parse ticket %.0f: %w", t.ID, err)
-			}
-			if err := fn(t.ID, full.Ticket); err != nil {
-				return err
-			}
+			ids = append(ids, t.ID)
 		}
-
 		if !doc.Meta.HasNext {
 			break
 		}
 		page++
 	}
-	return nil
+	return ids, nil
+}
+
+// fetchFullTickets GETs each ticket concurrently, returning them in input order.
+func fetchFullTickets(ctx context.Context, client *fsapi.Client, ids []float64) ([]map[string]any, error) {
+	full := make([]map[string]any, len(ids))
+	if len(ids) == 0 {
+		return full, nil
+	}
+
+	workers := categoriesWorkers
+	if len(ids) < workers {
+		workers = len(ids)
+	}
+
+	work := make(chan int)
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		firstErr error
+		errOnce  sync.Once
+	)
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range work {
+				id := ids[idx]
+				data, err := client.Get(ctx, fmt.Sprintf("tickets/%.0f", id), nil)
+				if err != nil {
+					errOnce.Do(func() { firstErr = fmt.Errorf("get ticket %.0f: %w", id, err) })
+					continue
+				}
+				var doc struct {
+					Ticket map[string]any `json:"ticket"`
+				}
+				if err := json.Unmarshal(data, &doc); err != nil {
+					errOnce.Do(func() { firstErr = fmt.Errorf("parse ticket %.0f: %w", id, err) })
+					continue
+				}
+				mu.Lock()
+				full[idx] = doc.Ticket
+				mu.Unlock()
+			}
+		}()
+	}
+
+	for i := range ids {
+		work <- i
+	}
+	close(work)
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return full, nil
 }
 
 func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendingChange, yes bool, buildBody func(pendingChange) ([]byte, error)) error {
@@ -696,17 +762,53 @@ func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendin
 		return nil
 	}
 
-	// calls to Put happen after prompt; ctx comes from Run which stays valid.
-	for _, ch := range changes {
+	// Build all payloads up front (sequential, cheap).
+	payloads := make([][]byte, len(changes))
+	for i, ch := range changes {
 		payload, err := buildBody(ch)
 		if err != nil {
 			return fmt.Errorf("build payload for ticket %.0f: %w", ch.id, err)
 		}
-		path := fmt.Sprintf("tickets/%.0f", ch.id)
-		if _, err := client.Put(ctx, path, payload); err != nil {
-			return fmt.Errorf("update ticket %.0f: %w", ch.id, err)
-		}
-		fmt.Printf("OK: ticket %.0f\n", ch.id)
+		payloads[i] = payload
+	}
+
+	// Apply PUTs concurrently.
+	workers := categoriesWorkers
+	if len(changes) < workers {
+		workers = len(changes)
+	}
+	work := make(chan int)
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		firstErr error
+		errOnce  sync.Once
+	)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range work {
+				ch := changes[idx]
+				path := fmt.Sprintf("tickets/%.0f", ch.id)
+				if _, err := client.Put(ctx, path, payloads[idx]); err != nil {
+					errOnce.Do(func() { firstErr = fmt.Errorf("update ticket %.0f: %w", ch.id, err) })
+					continue
+				}
+				mu.Lock()
+				fmt.Printf("OK: ticket %.0f\n", ch.id)
+				mu.Unlock()
+			}
+		}()
+	}
+	for i := range changes {
+		work <- i
+	}
+	close(work)
+	wg.Wait()
+
+	if firstErr != nil {
+		return firstErr
 	}
 	fmt.Printf("Done: %d applied\n", len(changes))
 	return nil
