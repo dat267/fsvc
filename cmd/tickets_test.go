@@ -524,12 +524,11 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20}],"meta":{"has_next":false}}`)
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20},{"id":30}],"meta":{"has_next":false}}`)
 	})
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			// priority 2, urgency=3 impact=1 -> min is (1,3)
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":2,"urgency":3,"impact":1}}`)
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":2,"urgency":2,"impact":2}}`)
 		} else {
 			b, _ := io.ReadAll(r.Body)
 			putCalls = append(putCalls, struct {
@@ -540,8 +539,21 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 		}
 	})
 	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
-		// priority 1, urgency=1 impact=1 -> already minimal, skip
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"priority":1,"urgency":1,"impact":1}}`)
+		// priority 3, urgency=1 impact=1 -> target (3,2)
+		if r.Method == http.MethodGet {
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"priority":3,"urgency":1,"impact":1}}`)
+		} else {
+			b, _ := io.ReadAll(r.Body)
+			putCalls = append(putCalls, struct {
+				Path string
+				Body []byte
+			}{Path: r.URL.Path, Body: b})
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":20}}`)
+		}
+	})
+	mux.HandleFunc("/api/_/tickets/30", func(w http.ResponseWriter, r *http.Request) {
+		// priority 4, urgency=3 impact=3 -> already correct, skip
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"priority":4,"urgency":3,"impact":3}}`)
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -553,16 +565,19 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(out, "[priority=2] ticket 10: urgency=3 impact=1 -> urgency=2 impact=2") {
+	if !strings.Contains(out, "[priority=2] ticket 10: urgency=2 impact=2 -> urgency=3 impact=1") {
 		t.Errorf("expected ticket 10 preview, got %q", out)
 	}
-	if strings.Contains(out, "ticket 20") {
-		t.Errorf("ticket 20 should not appear, got %q", out)
+	if !strings.Contains(out, "[priority=3] ticket 20: urgency=1 impact=1 -> urgency=3 impact=2") {
+		t.Errorf("expected ticket 20 preview, got %q", out)
 	}
-	if len(putCalls) != 1 {
-		t.Fatalf("expected 1 PUT call, got %d", len(putCalls))
+	if strings.Contains(out, "ticket 30") {
+		t.Errorf("ticket 30 should not appear, got %q", out)
 	}
-	if !strings.Contains(out, "Done: 1 applied") {
+	if len(putCalls) != 2 {
+		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
+	}
+	if !strings.Contains(out, "Done: 2 applied") {
 		t.Errorf("expected summary, got %q", out)
 	}
 }

@@ -426,7 +426,7 @@ func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) 
 
 var minUIForPriority = map[float64]struct{ urgency, impact float64 }{
 	1: {1, 1},
-	2: {2, 2},
+	2: {3, 1},
 	3: {3, 2},
 	4: {3, 3},
 }
