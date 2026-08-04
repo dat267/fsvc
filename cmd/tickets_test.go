@@ -184,7 +184,7 @@ func TestTicketsCategorizeCmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsCategorizeCmd{OlderThanDays: 1}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsCategorizeCmd{OlderThanDays: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -222,7 +222,7 @@ func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	err := (&TicketsCategorizeCmd{QueryJSON: `{"filter":"123","advanced_query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 30}).Run(context.Background(), newTestClient(srv.URL))
+	err := (&TicketsCategorizeCmd{QueryJSON: `{"filter":"123","advanced_query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -238,8 +238,46 @@ func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
 	if !reflect.DeepEqual(gotHash, wantHash) {
 		t.Errorf("expected advanced_query_hash %v, got %v", wantHash, gotHash)
 	}
-	if gotQuery.Get("per_page") != "30" {
-		t.Errorf("expected per_page=30, got %q", gotQuery.Get("per_page"))
+	if gotQuery.Get("per_page") != "100" {
+		t.Errorf("expected per_page=100, got %q", gotQuery.Get("per_page"))
+	}
+}
+
+func TestTicketsCategorizeCmd_Pagination(t *testing.T) {
+	calls := 0
+	var pages []string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		p := r.URL.Query().Get("page")
+		pages = append(pages, p)
+		w.Header().Set("Content-Type", "application/json")
+		if p == "1" {
+			_, _ = fmt.Fprint(w, `{"tickets":[{"id":99991,"subject":"Page 1 ticket","group_id":1,"responder_id":99,"priority":1,"status":2,"created_at":"2026-07-01T00:00:00Z"}],"meta":{"has_next":true}}`)
+		} else {
+			_, _ = fmt.Fprint(w, `{"tickets":[{"id":99992,"subject":"Page 2 ticket","group_id":1,"responder_id":99,"priority":2,"status":2,"created_at":"2026-07-02T00:00:00Z"}],"meta":{"has_next":false}}`)
+		}
+	})
+	mux.HandleFunc("/api/_/tickets/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"conversations":[],"meta":{"count":0}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	out := captureStdout(t, func() {
+		err := (&TicketsCategorizeCmd{OlderThanDays: 1, Page: 1, PerPage: 1}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if calls != 2 {
+		t.Errorf("expected 2 pages fetched, got %d", calls)
+	}
+	if !strings.Contains(out, "99991") || !strings.Contains(out, "99992") {
+		t.Errorf("expected tickets from both pages:\n%s", out)
 	}
 }
 

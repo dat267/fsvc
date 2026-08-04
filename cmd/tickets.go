@@ -94,7 +94,7 @@ func (c *TicketsConvCmd) Run(ctx context.Context, client *fsapi.Client) error {
 type TicketsCategorizeCmd struct {
 	OlderThanDays float64 `help:"Days threshold for stale agent response" default:"2"`
 	Page          int     `help:"Page number" default:"1"`
-	PerPage       int     `help:"Tickets per page" default:"30"`
+	PerPage       int     `help:"Tickets per page" default:"100"`
 	QueryJSON     string  `name:"query-json" help:"Raw JSON query params to pass to the tickets list endpoint"`
 	Filter        int64   `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
 }
@@ -122,84 +122,91 @@ type catTicket struct {
 }
 
 func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) error {
-	q := url.Values{}
-	q.Set("page", strconv.Itoa(c.Page))
-	q.Set("per_page", strconv.Itoa(c.PerPage))
-	q.Set("order_by", "created_at")
-	q.Set("order_type", "asc")
-
-	if c.QueryJSON != "" {
-		var extra map[string]any
-		if err := json.Unmarshal([]byte(c.QueryJSON), &extra); err != nil {
-			return fmt.Errorf("invalid --query-json: %w", err)
-		}
-		for k, v := range extra {
-			if s, ok := v.(string); ok {
-				q.Set(k, s)
-				continue
-			}
-			b, _ := json.Marshal(v)
-			q.Set(k, string(b))
-		}
-	} else if c.Filter != 0 {
-		q.Set("filter", strconv.FormatInt(c.Filter, 10))
-	} else {
-		q.Set("advanced_query_hash", `[{"condition":"status","operator":"is","value":0,"type":"default"}]`)
-	}
-
-	data, err := client.Get(ctx, "tickets", q)
-	if err != nil {
-		return err
-	}
-
-	var doc struct {
-		Tickets []map[string]any `json:"tickets"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("parse tickets: %w", err)
-	}
-
-	var unassigned, staleAgent, awaitingCustomer []catTicket
 	threshold := time.Now().Add(-time.Duration(c.OlderThanDays * float64(time.Hour) * 24))
 
-	for _, t := range doc.Tickets {
-		id := t["id"].(float64)
-		entry := catTicket{id: id, ticket: t}
+	var unassigned, staleAgent, awaitingCustomer []catTicket
+	page := c.Page
 
-		// Unassigned = responder_id null or 0 in the response. Note:
-		// advanced_query_hash uses responder_id -1 for unassigned and 0 for
-		// assigned-to-self (see docs/private-api-notes.md); not used yet.
-		if r := t["responder_id"]; r == nil || r == float64(0) {
-			unassigned = append(unassigned, entry)
-			continue
-		}
+	for {
+		q := url.Values{}
+		q.Set("page", strconv.Itoa(page))
+		q.Set("per_page", strconv.Itoa(c.PerPage))
+		q.Set("order_by", "created_at")
+		q.Set("order_type", "asc")
 
-		latest, hasMsg, err := fetchLatestConversation(ctx, client, id)
-		if err != nil {
-			return fmt.Errorf("ticket %.0f: %w", id, err)
-		}
-		if hasMsg {
-			entry.incoming = latest.Incoming
-			entry.lastMsgAt = latest.CreatedAt
+		if c.QueryJSON != "" {
+			var extra map[string]any
+			if err := json.Unmarshal([]byte(c.QueryJSON), &extra); err != nil {
+				return fmt.Errorf("invalid --query-json: %w", err)
+			}
+			for k, v := range extra {
+				if s, ok := v.(string); ok {
+					q.Set(k, s)
+					continue
+				}
+				b, _ := json.Marshal(v)
+				q.Set(k, string(b))
+			}
+		} else if c.Filter != 0 {
+			q.Set("filter", strconv.FormatInt(c.Filter, 10))
 		} else {
-			// No conversations: use the ticket creation date as the
-			// reference timestamp (treated as not a customer message).
-			created, ok := t["created_at"].(string)
-			if !ok {
-				return fmt.Errorf("ticket %.0f: missing created_at", id)
-			}
-			at, err := time.Parse(time.RFC3339, created)
-			if err != nil {
-				return fmt.Errorf("ticket %.0f: bad created_at %q: %w", id, created, err)
-			}
-			entry.lastMsgAt = at
+			q.Set("advanced_query_hash", `[{"condition":"status","operator":"is","value":0,"type":"default"}]`)
 		}
 
-		if entry.incoming {
-			awaitingCustomer = append(awaitingCustomer, entry)
-		} else if entry.lastMsgAt.Before(threshold) {
-			staleAgent = append(staleAgent, entry)
+		data, err := client.Get(ctx, "tickets", q)
+		if err != nil {
+			return err
 		}
+
+		var doc struct {
+			Tickets []map[string]any `json:"tickets"`
+			Meta    struct {
+				HasNext bool `json:"has_next"`
+			} `json:"meta"`
+		}
+		if err := json.Unmarshal(data, &doc); err != nil {
+			return fmt.Errorf("parse tickets: %w", err)
+		}
+
+		for _, t := range doc.Tickets {
+			id := t["id"].(float64)
+			entry := catTicket{id: id, ticket: t}
+
+			if r := t["responder_id"]; r == nil || r == float64(0) {
+				unassigned = append(unassigned, entry)
+				continue
+			}
+
+			latest, hasMsg, err := fetchLatestConversation(ctx, client, id)
+			if err != nil {
+				return fmt.Errorf("ticket %.0f: %w", id, err)
+			}
+			if hasMsg {
+				entry.incoming = latest.Incoming
+				entry.lastMsgAt = latest.CreatedAt
+			} else {
+				created, ok := t["created_at"].(string)
+				if !ok {
+					return fmt.Errorf("ticket %.0f: missing created_at", id)
+				}
+				at, err := time.Parse(time.RFC3339, created)
+				if err != nil {
+					return fmt.Errorf("ticket %.0f: bad created_at %q: %w", id, created, err)
+				}
+				entry.lastMsgAt = at
+			}
+
+			if entry.incoming {
+				awaitingCustomer = append(awaitingCustomer, entry)
+			} else if entry.lastMsgAt.Before(threshold) {
+				staleAgent = append(staleAgent, entry)
+			}
+		}
+
+		if !doc.Meta.HasNext {
+			break
+		}
+		page++
 	}
 
 	sort.Slice(unassigned, func(i, j int) bool {
