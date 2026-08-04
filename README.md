@@ -9,14 +9,46 @@ following the scaffold pattern from [min](https://github.com/dat267/min).
 ```bash
 go install github.com/dat267/fsvc@latest
 
+# Grab your session cookie from browser DevTools
+#   F12 → Application → Cookies → Freshservice domain
+#   Copy the full Cookie header value (all cookies, semicolon-separated)
+
 # Configure
 fsvc config set subdomain acme
-fsvc config set cookie "helpdesk_node_session=..."
+fsvc config set cookie "helpdesk_node_session=abc123; _itildesk_session=xyz; ..."
 
 # Verify
 fsvc session
 # OK: authenticated (visible tickets: 7)
+
+# Use
+fsvc tickets categorize                     # your unresolved tickets in 3 lists
+fsvc tickets list --format json             # raw ticket list
+fsvc tickets conversations 10100            # messages on a ticket
+fsvc ticket-filters show 1100               # show a saved ticket filter
+fsvc users show 2100                        # show a user
 ```
+
+### Write commands
+
+Mutation commands need a CSRF token. Grab it from any POST request in the
+DevTools **Network** tab (`X-CSRF-Token` header) and set it in config:
+
+```bash
+fsvc config set csrf-token "4oEDe-..."
+
+# Then:
+fsvc tickets update 10100 status=4                     # resolve a ticket
+fsvc tickets fill-start-dates -y                       # backfill planned_start_date
+fsvc tickets fill-end-dates -y                         # bump due dates by 3 business days
+fsvc tickets sync-priority -y                          # sync priority from urgency+impact
+fsvc tickets sync-urgency-impact -y                    # set minimal urgency+impact for each priority
+```
+
+- Config lives at `~/.config/fsvc/fsvc.json` (or set `--subdomain`/`--cookie` flags per invocation)
+- Cookie rotates automatically — the CLI captures `Set-Cookie` from each response
+- Use `--time-zone Europe/London` for accurate business-day math on `categorize` and `fill-end-dates`
+- Point at a mock server with `--base-url http://127.0.0.1:PORT` for safe testing
 
 ## Config
 
