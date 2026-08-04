@@ -27,11 +27,6 @@ func nowInTZ() time.Time {
 	return biz.NowInTZ(tz)
 }
 
-// Business-day helpers delegate to the pure biz package.
-func addBusinessDays(t time.Time, n int) time.Time   { return biz.AddBusinessDays(t, n) }
-func subBusinessDays(t time.Time, n int) time.Time   { return biz.SubBusinessDays(t, n) }
-func businessDaysBetween(from, to time.Time) float64 { return biz.BusinessDaysBetween(from, to) }
-
 const configFileFlagName = "config-file"
 
 func SetAppName(name string) {

@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"fsvc/internal/fsapi"
 )
@@ -644,75 +643,5 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 	}
 	if !strings.Contains(out, "Done: 2 applied") {
 		t.Errorf("expected summary, got %q", out)
-	}
-}
-
-func TestAddBusinessDays(t *testing.T) {
-	mon := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC) // Monday
-
-	tests := []struct {
-		start time.Time
-		n     int
-		want  string
-	}{
-		{mon, 0, "2026-08-03"}, // same day
-		{mon, 1, "2026-08-04"}, // Tue
-		{mon, 3, "2026-08-06"}, // Thu
-		{mon, 5, "2026-08-10"}, // Mon (skip Sat/Sun)
-		{time.Date(2026, 8, 7, 0, 0, 0, 0, time.UTC), 1, "2026-08-10"}, // Fri → Mon
-	}
-
-	for _, tt := range tests {
-		got := addBusinessDays(tt.start, tt.n).Format("2006-01-02")
-		if got != tt.want {
-			t.Errorf("addBusinessDays(%s, %d) = %s, want %s", tt.start.Format("2006-01-02"), tt.n, got, tt.want)
-		}
-	}
-}
-
-func TestSubBusinessDays(t *testing.T) {
-	mon := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
-
-	tests := []struct {
-		start time.Time
-		n     int
-		want  string
-	}{
-		{mon, 0, "2026-08-03"},
-		{mon, 1, "2026-07-31"},
-		{mon, 3, "2026-07-29"},
-		{time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC), 1, "2026-08-07"},
-	}
-
-	for _, tt := range tests {
-		got := subBusinessDays(tt.start, tt.n).Format("2006-01-02")
-		if got != tt.want {
-			t.Errorf("subBusinessDays(%s, %d) = %s, want %s", tt.start.Format("2006-01-02"), tt.n, got, tt.want)
-		}
-	}
-}
-
-func TestBusinessDaysBetween(t *testing.T) {
-	mon := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)      // Monday noon
-	fri := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)      // Friday noon
-	nextMon := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC) // next Monday noon
-
-	tests := []struct {
-		from, to time.Time
-		want     float64
-	}{
-		{mon, mon, 0},                  // same instant
-		{mon, mon.AddDate(0, 0, 1), 1}, // Mon→Tue = 1
-		{mon, fri, 4},                  // Mon→Fri = 4
-		{fri, nextMon, 1},              // Fri→Mon skips weekend = 1
-		{mon, nextMon, 5},              // full week = 5
-		{fri, fri, 0},                  // same day
-	}
-
-	for _, tt := range tests {
-		got := businessDaysBetween(tt.from, tt.to)
-		if got != tt.want {
-			t.Errorf("businessDaysBetween(%v, %v) = %v, want %v", tt.from.Format(time.RFC3339), tt.to.Format(time.RFC3339), got, tt.want)
-		}
 	}
 }

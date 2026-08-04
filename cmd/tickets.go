@@ -122,7 +122,7 @@ type catTicket struct {
 const categoriesWorkers = 8
 
 func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) error {
-	threshold := subBusinessDays(nowInTZ(), c.OlderThanDays)
+	threshold := biz.SubBusinessDays(nowInTZ(), c.OlderThanDays)
 
 	// All unresolved tickets: used only to detect the unassigned list.
 	// No conversation fetches happen here.
@@ -311,7 +311,7 @@ func printCatTable(entries []catTicket, client *fsapi.Client) {
 		rows[i] = map[string]any{
 			"subject": truncate(e.ticket.Subject, 40),
 			"link":    fmt.Sprintf("%s/a/tickets/%.0f", client.BaseURL(), e.id),
-			"days":    fmt.Sprintf("%.1f", businessDaysBetween(ref, nowInTZ())),
+			"days":    fmt.Sprintf("%.1f", biz.BusinessDaysBetween(ref, nowInTZ())),
 		}
 	}
 	fmt.Print(RenderTable(classifyColumns, rows))
@@ -423,7 +423,7 @@ type TicketsFillEndDatesCmd struct {
 
 func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	base := nowInTZ()
-	target := addBusinessDays(base, c.Days).Format(time.RFC3339)
+	target := biz.AddBusinessDays(base, c.Days).Format(time.RFC3339)
 
 	var changes []pendingChange
 	if err := forEachMyTicket(ctx, client, c.PerPage, func(t fsapi.Ticket) error {
