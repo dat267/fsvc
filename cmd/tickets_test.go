@@ -161,6 +161,8 @@ func TestTicketsConvCmd(t *testing.T) {
 }
 
 func TestTicketsCategorizeCmd(t *testing.T) {
+	cfgDefaultFilter = 1100
+	defer func() { cfgDefaultFilter = 0 }()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -245,6 +247,8 @@ func TestTicketsCategorizeCmd_QueryJSON(t *testing.T) {
 }
 
 func TestTicketsCategorizeCmd_Pagination(t *testing.T) {
+	cfgDefaultFilter = 1100
+	defer func() { cfgDefaultFilter = 0 }()
 	calls := 0
 	var pages []string
 
@@ -283,6 +287,8 @@ func TestTicketsCategorizeCmd_Pagination(t *testing.T) {
 }
 
 func TestTicketsFillStartDatesCmd(t *testing.T) {
+	cfgDefaultFilter = 1100
+	defer func() { cfgDefaultFilter = 0 }()
 	var putCalls []struct {
 		Path string
 		Body []byte
@@ -338,6 +344,8 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 }
 
 func TestTicketsFillEndDatesCmd(t *testing.T) {
+	cfgDefaultFilter = 1100
+	defer func() { cfgDefaultFilter = 0 }()
 	var putCalls []struct {
 		Path string
 		Body []byte
@@ -516,6 +524,8 @@ func TestTicketsUpdateCmd_InvalidPair(t *testing.T) {
 }
 
 func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
+	cfgDefaultFilter = 1100
+	defer func() { cfgDefaultFilter = 0 }()
 	var putCalls []struct {
 		Path string
 		Body []byte
@@ -583,6 +593,8 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 }
 
 func TestTicketsSyncPriorityCmd(t *testing.T) {
+	cfgDefaultFilter = 1100
+	defer func() { cfgDefaultFilter = 0 }()
 	var putCalls []struct {
 		Path string
 		Body []byte

@@ -17,6 +17,7 @@ type CLI struct {
 	CSRFToken     string                `help:"CSRF token for write requests"`
 	BaseURL       string                `help:"Override API base URL"`
 	TimeZone      string                `help:"Timezone for business-day calculations (e.g. Europe/London)" env:"FSVC_TZ"`
+	DefaultFilter int64                 `help:"Default saved ticket filter ID"`
 	Version       VersionCmd            `cmd:"" help:"Show version"`
 	Session       SessionCmd            `cmd:"" help:"Verify the session cookie"`
 	Tickets       TicketsCmdGroup       `cmd:"" help:"Work with tickets"`

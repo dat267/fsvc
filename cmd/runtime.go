@@ -21,6 +21,9 @@ var appName = "fsvc"
 // tz is set by Execute from the --tz flag before commands run.
 var tz string
 
+// cfgDefaultFilter is the ticket filter ID set from config/flag/env.
+var cfgDefaultFilter int64
+
 // nowInTZ returns the current time in the configured timezone (or local if unset).
 func nowInTZ() time.Time {
 	if tz == "" {
@@ -129,6 +132,7 @@ func Execute(ctx context.Context) {
 
 	app.cfgPath = cli.ConfigFile
 	tz = cli.TimeZone
+	cfgDefaultFilter = cli.DefaultFilter
 	client.Update(clientConfigFromCLI(cli))
 	k.FatalIfErrorf(kongCtx.Run())
 }
