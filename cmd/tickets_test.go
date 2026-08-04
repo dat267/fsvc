@@ -288,7 +288,6 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	// List: two tickets assigned to me, unresolved
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20}],"meta":{"has_next":false}}`)
@@ -317,48 +316,93 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsFillStartDatesCmd{DryRun: false, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsFillStartDatesCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
+	if !strings.Contains(out, "[planned_start_date] ticket 10: nil -> 2026-08-01T12:00:00Z") {
+		t.Errorf("expected preview line, got %q", out)
+	}
 	if len(putCalls) != 1 {
 		t.Fatalf("expected 1 PUT call, got %d", len(putCalls))
 	}
 	if string(putCalls[0].Body) != `{"planned_start_date":"2026-08-01T12:00:00Z"}` {
 		t.Errorf("unexpected PUT body: %q", putCalls[0].Body)
 	}
-	if !strings.Contains(out, "Done: 1 filled, 1 skipped") {
+	if !strings.Contains(out, "Done: 1 applied") {
 		t.Errorf("expected summary, got %q", out)
 	}
 }
 
-func TestTicketsFillStartDatesCmd_DryRun(t *testing.T) {
+func TestTicketsFillEndDatesCmd(t *testing.T) {
+	var putCalls []struct {
+		Path string
+		Body []byte
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10}],"meta":{"has_next":false}}`)
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20},{"id":30}],"meta":{"has_next":false}}`)
 	})
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut {
-			t.Error("PUT should not be called in dry-run mode")
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_end_date":null}}`)
+		} else {
+			b, _ := io.ReadAll(r.Body)
+			putCalls = append(putCalls, struct {
+				Path string
+				Body []byte
+			}{Path: r.URL.Path, Body: b})
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
 		}
+	})
+	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_start_date":null,"stats":{"first_responded_at":"2026-08-01T00:00:00+04:00"}}}`)
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"planned_end_date":"2099-01-01T00:00:00Z"}}`)
+	})
+	mux.HandleFunc("/api/_/tickets/30", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"planned_end_date":"2020-01-01T00:00:00Z"}}`)
+		} else {
+			b, _ := io.ReadAll(r.Body)
+			putCalls = append(putCalls, struct {
+				Path string
+				Body []byte
+			}{Path: r.URL.Path, Body: b})
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":30}}`)
+		}
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsFillStartDatesCmd{DryRun: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsFillEndDatesCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	if !strings.Contains(out, "[dry-run] ticket 10: planned_start_date=") {
-		t.Errorf("expected dry-run output:\n%s", out)
+	if !strings.Contains(out, "[planned_end_date] ticket 10:  -> ") {
+		t.Errorf("expected null→filled preview, got %q", out)
+	}
+	if !strings.Contains(out, "[planned_end_date] ticket 30: 2020-01-01T00:00:00Z -> ") {
+		t.Errorf("expected past→bump preview, got %q", out)
+	}
+	if strings.Contains(out, "ticket 20") {
+		t.Errorf("future-date ticket 20 should not appear, got %q", out)
+	}
+	if len(putCalls) != 2 {
+		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
+	}
+	if !strings.Contains(out, "Done: 2 applied") {
+		t.Errorf("expected summary, got %q", out)
 	}
 }
 

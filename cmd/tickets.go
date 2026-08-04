@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"fsvc/internal/fsapi"
@@ -18,6 +19,7 @@ type TicketsCmdGroup struct {
 	Conversations  TicketsConvCmd           `cmd:"" help:"List conversations for a ticket"`
 	Categorize     TicketsCategorizeCmd     `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
 	FillStartDates TicketsFillStartDatesCmd `cmd:"" help:"Backfill planned_start_date from first_responded_at on your unresolved tickets"`
+	FillEndDates   TicketsFillEndDatesCmd   `cmd:"" help:"Bulk-set planned_end_date to now + N days on your unresolved tickets"`
 	Update         TicketsUpdateCmd         `cmd:"" help:"Update a ticket"`
 }
 
@@ -334,17 +336,96 @@ func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error 
 	return Print(data, "ticket", ticketsUpdateColumns, c.Format)
 }
 
+type pendingChange struct {
+	id    float64
+	field string
+	from  string
+	to    string
+}
+
+var myFilter = `[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`
+
+func confirmApply(n int) bool {
+	fmt.Printf("\nApply %d changes? [y/N] ", n)
+	var answer string
+	_, _ = fmt.Scanln(&answer)
+	return strings.ToLower(answer) == "y"
+}
+
+// ---- fill-start-dates -------------------------------------------------------
+
 type TicketsFillStartDatesCmd struct {
-	DryRun  bool `help:"Show what would change without applying"`
+	Yes     bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
 	PerPage int  `help:"Tickets per page" default:"100"`
 }
 
 func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
-	myFilter := `[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`
-	filled, skipped, page := 0, 0, 1
+	var changes []pendingChange
 
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
+		psd, hasPSD := ticket["planned_start_date"]
+		if !hasPSD || psd != nil {
+			return nil
+		}
+		stats, _ := ticket["stats"].(map[string]any)
+		firstResp, _ := stats["first_responded_at"].(string)
+		if firstResp == "" {
+			return nil
+		}
+		changes = append(changes, pendingChange{id: id, field: "planned_start_date", from: "nil", to: firstResp})
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
+		return json.Marshal(map[string]string{ch.field: ch.to})
+	})
+}
+
+// ---- fill-end-dates ---------------------------------------------------------
+
+type TicketsFillEndDatesCmd struct {
+	Yes     bool    `help:"Skip confirmation prompt" name:"yes" short:"y"`
+	Days    float64 `help:"Days from now to set as planned end date" default:"7"`
+	PerPage int     `help:"Tickets per page" default:"100"`
+}
+
+func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
+	target := time.Now().Add(time.Duration(c.Days*24) * time.Hour).Format(time.RFC3339)
+	now := time.Now()
+
+	var changes []pendingChange
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
+		ped := ticket["planned_end_date"]
+		cur := ""
+		if s, ok := ped.(string); ok {
+			cur = s
+		}
+
+		if cur != "" {
+			if at, err := time.Parse(time.RFC3339, cur); err == nil && at.After(now) {
+				return nil // already in the future, leave alone
+			}
+		}
+
+		changes = append(changes, pendingChange{id: id, field: "planned_end_date", from: cur, to: target})
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return previewAndApply(ctx, client, changes, c.Yes, func(ch pendingChange) ([]byte, error) {
+		return json.Marshal(map[string]string{ch.field: ch.to})
+	})
+}
+
+// ---- helpers ----------------------------------------------------------------
+
+func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn func(id float64, ticket map[string]any) error) error {
+	page := 1
 	for {
-		q := url.Values{"page": {strconv.Itoa(page)}, "per_page": {strconv.Itoa(c.PerPage)},
+		q := url.Values{"page": {strconv.Itoa(page)}, "per_page": {strconv.Itoa(perPage)},
 			"order_by": {"created_at"}, "order_type": {"asc"},
 			"advanced_query_hash": {myFilter}}
 		data, err := client.Get(ctx, "tickets", q)
@@ -365,41 +446,19 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client
 		}
 
 		for _, t := range doc.Tickets {
-			ticketPath := fmt.Sprintf("tickets/%.0f", t.ID)
-			fullData, err := client.Get(ctx, ticketPath, nil)
+			fullData, err := client.Get(ctx, fmt.Sprintf("tickets/%.0f", t.ID), nil)
 			if err != nil {
 				return fmt.Errorf("get ticket %.0f: %w", t.ID, err)
 			}
-
-			var fullDoc struct {
+			var full struct {
 				Ticket map[string]any `json:"ticket"`
 			}
-			if err := json.Unmarshal(fullData, &fullDoc); err != nil {
+			if err := json.Unmarshal(fullData, &full); err != nil {
 				return fmt.Errorf("parse ticket %.0f: %w", t.ID, err)
 			}
-
-			psd, hasPSD := fullDoc.Ticket["planned_start_date"]
-			if !hasPSD || psd != nil {
-				skipped++
-				continue
+			if err := fn(t.ID, full.Ticket); err != nil {
+				return err
 			}
-			stats, _ := fullDoc.Ticket["stats"].(map[string]any)
-			firstResp, _ := stats["first_responded_at"].(string)
-			if firstResp == "" {
-				skipped++
-				continue
-			}
-
-			if c.DryRun {
-				fmt.Printf("[dry-run] ticket %.0f: planned_start_date=%q\n", t.ID, firstResp)
-			} else {
-				payload, _ := json.Marshal(map[string]string{"planned_start_date": firstResp})
-				if _, err := client.Put(ctx, ticketPath, payload); err != nil {
-					return fmt.Errorf("update ticket %.0f: %w", t.ID, err)
-				}
-				fmt.Printf("ticket %.0f: planned_start_date=%q\n", t.ID, firstResp)
-			}
-			filled++
 		}
 
 		if !doc.Meta.HasNext {
@@ -407,7 +466,34 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client
 		}
 		page++
 	}
+	return nil
+}
 
-	fmt.Printf("Done: %d filled, %d skipped\n", filled, skipped)
+func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendingChange, yes bool, buildBody func(pendingChange) ([]byte, error)) error {
+	if len(changes) == 0 {
+		fmt.Println("No changes needed.")
+		return nil
+	}
+	for _, ch := range changes {
+		fmt.Printf("[%s] ticket %.0f: %s -> %s\n", ch.field, ch.id, ch.from, ch.to)
+	}
+	if !yes && !confirmApply(len(changes)) {
+		fmt.Println("Aborted.")
+		return nil
+	}
+
+	// calls to Put happen after prompt; ctx comes from Run which stays valid.
+	for _, ch := range changes {
+		payload, err := buildBody(ch)
+		if err != nil {
+			return fmt.Errorf("build payload for ticket %.0f: %w", ch.id, err)
+		}
+		path := fmt.Sprintf("tickets/%.0f", ch.id)
+		if _, err := client.Put(ctx, path, payload); err != nil {
+			return fmt.Errorf("update ticket %.0f: %w", ch.id, err)
+		}
+		fmt.Printf("OK: ticket %.0f\n", ch.id)
+	}
+	fmt.Printf("Done: %d applied\n", len(changes))
 	return nil
 }
