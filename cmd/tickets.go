@@ -345,6 +345,16 @@ type pendingChange struct {
 
 var myFilter = `[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`
 
+func addBusinessDays(t time.Time, n int) time.Time {
+	for i := 0; i < n; {
+		t = t.Add(24 * time.Hour)
+		if t.Weekday() != time.Saturday && t.Weekday() != time.Sunday {
+			i++
+		}
+	}
+	return t
+}
+
 func confirmApply(n int) bool {
 	fmt.Printf("\nApply %d changes? [y/N] ", n)
 	var answer string
@@ -386,13 +396,13 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client
 // ---- fill-end-dates ---------------------------------------------------------
 
 type TicketsFillEndDatesCmd struct {
-	Yes     bool    `help:"Skip confirmation prompt" name:"yes" short:"y"`
-	Days    float64 `help:"Days from now to set as planned end date" default:"3"`
-	PerPage int     `help:"Tickets per page" default:"100"`
+	Yes     bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
+	Days    int  `help:"Business days from now to set as planned end date" default:"3"`
+	PerPage int  `help:"Tickets per page" default:"100"`
 }
 
 func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
-	target := time.Now().Add(time.Duration(c.Days*24) * time.Hour).Format(time.RFC3339)
+	target := addBusinessDays(time.Now(), c.Days).Format(time.RFC3339)
 	now := time.Now()
 
 	var changes []pendingChange

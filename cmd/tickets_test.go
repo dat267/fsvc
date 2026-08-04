@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"fsvc/internal/fsapi"
 )
@@ -511,5 +512,28 @@ func TestTicketsUpdateCmd_InvalidPair(t *testing.T) {
 	err := (&TicketsUpdateCmd{ID: 10100, Pairs: []string{"noequals"}}).Run(context.Background(), newTestClient(srv.URL))
 	if err == nil {
 		t.Error("expected error for invalid pair")
+	}
+}
+
+func TestAddBusinessDays(t *testing.T) {
+	mon := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC) // Monday
+
+	tests := []struct {
+		start time.Time
+		n     int
+		want  string
+	}{
+		{mon, 0, "2026-08-03"}, // same day
+		{mon, 1, "2026-08-04"}, // Tue
+		{mon, 3, "2026-08-06"}, // Thu
+		{mon, 5, "2026-08-10"}, // Mon (skip Sat/Sun)
+		{time.Date(2026, 8, 7, 0, 0, 0, 0, time.UTC), 1, "2026-08-10"}, // Fri → Mon
+	}
+
+	for _, tt := range tests {
+		got := addBusinessDays(tt.start, tt.n).Format("2006-01-02")
+		if got != tt.want {
+			t.Errorf("addBusinessDays(%s, %d) = %s, want %s", tt.start.Format("2006-01-02"), tt.n, got, tt.want)
+		}
 	}
 }
