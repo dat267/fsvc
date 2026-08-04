@@ -1,0 +1,15 @@
+{
+  "business_rules": {},
+  "requested_item": {
+    "id": 7101,
+    "item_id": 7102,
+    "item": {
+      "short_description": "This request is for other tickets",
+      "description": "<p>Customer-facing description</p>\n",
+      "custom_fields": []
+    },
+    "attachments": [],
+    "cloud_files": [],
+    "custom_fields": {}
+  }
+}

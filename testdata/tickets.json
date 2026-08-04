@@ -1,0 +1,54 @@
+{
+  "tickets": [
+    {
+      "id": 10100,
+      "subject": "Request for Omar Saleh : Customer Support Ticket",
+      "group_id": 4001,
+      "department_id": 5100,
+      "requester_id": 2100,
+      "responder_id": 3100,
+      "priority": 2,
+      "status": 2,
+      "source": 2,
+      "created_at": "2026-07-29T16:42:48+04:00",
+      "updated_at": "2026-07-31T16:43:18+04:00",
+      "workspace_id": 2,
+      "type": "Service Request",
+      "requester": {
+        "id": 2100,
+        "name": "Omar Saleh",
+        "email": "omar@example.com"
+      },
+      "stats": {
+        "inbound_count": 2,
+        "outbound_count": 0
+      }
+    },
+    {
+      "id": 10101,
+      "subject": "Printer not working",
+      "group_id": 4001,
+      "department_id": 5100,
+      "requester_id": 2101,
+      "responder_id": 3101,
+      "priority": 1,
+      "status": 4,
+      "source": 1,
+      "created_at": "2026-07-28T10:00:00+04:00",
+      "updated_at": "2026-07-29T09:15:00+04:00",
+      "workspace_id": 2,
+      "type": "Incident",
+      "requester": {
+        "id": 2101,
+        "name": "Lina Haddad",
+        "email": "lina@example.com"
+      }
+    }
+  ],
+  "meta": {
+    "offset": 0,
+    "has_next": false,
+    "editable_ids": [10100, 10101],
+    "count": 2
+  }
+}
