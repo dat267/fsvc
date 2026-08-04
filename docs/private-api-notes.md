@@ -20,7 +20,11 @@ is an array of condition objects sent URL-encoded as a query parameter:
 - `type` — `default` (and likely `advanced`)
 
 The `tickets categorize` command sends its default unresolved filter via
-`advanced_query_hash`.
+`advanced_query_hash`:
+```json
+[{"condition":"status","operator":"is","value":0,"type":"default"},
+ {"condition":"workspace_id","operator":"is","value":2,"type":"default"}]
+```
 
 ### Status values
 
