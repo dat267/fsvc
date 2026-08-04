@@ -119,7 +119,6 @@ type catTicket struct {
 	ticket    map[string]any
 	lastMsgAt time.Time
 	incoming  bool
-	hasMsg    bool
 }
 
 func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) error {
@@ -179,17 +178,26 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 		if err != nil {
 			return fmt.Errorf("ticket %.0f: %w", id, err)
 		}
-		if !hasMsg {
-			continue
+		if hasMsg {
+			entry.incoming = latest.Incoming
+			entry.lastMsgAt = latest.CreatedAt
+		} else {
+			// No conversations: use the ticket creation date as the
+			// reference timestamp (treated as not a customer message).
+			created, ok := t["created_at"].(string)
+			if !ok {
+				return fmt.Errorf("ticket %.0f: missing created_at", id)
+			}
+			at, err := time.Parse(time.RFC3339, created)
+			if err != nil {
+				return fmt.Errorf("ticket %.0f: bad created_at %q: %w", id, created, err)
+			}
+			entry.lastMsgAt = at
 		}
 
-		entry.hasMsg = true
-		entry.incoming = latest.Incoming
-		entry.lastMsgAt = latest.CreatedAt
-
-		if latest.Incoming {
+		if entry.incoming {
 			awaitingCustomer = append(awaitingCustomer, entry)
-		} else if latest.CreatedAt.Before(threshold) {
+		} else if entry.lastMsgAt.Before(threshold) {
 			staleAgent = append(staleAgent, entry)
 		}
 	}
@@ -260,9 +268,7 @@ func printCatTable(entries []catTicket, cols []Column) {
 			"priority":   Lookup(e.ticket, "priority"),
 			"created_at": Lookup(e.ticket, "created_at"),
 		}
-		if e.hasMsg {
-			row["last_msg_at"] = e.lastMsgAt.Format("2006-01-02 15:04")
-		}
+		row["last_msg_at"] = e.lastMsgAt.Format("2006-01-02 15:04")
 		rows[i] = row
 	}
 	fmt.Print(RenderTable(cols, rows))

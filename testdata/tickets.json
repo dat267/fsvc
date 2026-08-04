@@ -63,12 +63,32 @@
         "name": "Ahmad Al Habib",
         "email": "ahmad@example.com"
       }
+    },
+    {
+      "id": 10104,
+      "subject": "Old ticket with no messages",
+      "group_id": 4001,
+      "department_id": 5100,
+      "requester_id": 2103,
+      "responder_id": 3102,
+      "priority": 2,
+      "status": 2,
+      "source": 1,
+      "created_at": "2026-07-25T00:00:00+04:00",
+      "updated_at": "2026-07-25T00:00:00+04:00",
+      "workspace_id": 2,
+      "type": "Incident",
+      "requester": {
+        "id": 2103,
+        "name": "Fatima Al Zaabi",
+        "email": "fatima@example.com"
+      }
     }
   ],
   "meta": {
     "offset": 0,
     "has_next": false,
-    "editable_ids": [10100, 10101, 10103],
-    "count": 3
+    "editable_ids": [10100, 10101, 10103, 10104],
+    "count": 4
   }
 }

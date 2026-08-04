@@ -175,6 +175,11 @@ func TestTicketsCategorizeCmd(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"conversations":[{"id":2,"incoming":true,"created_at":"2026-08-04T00:00:00Z","user_id":2,"body_text":"."}],"meta":{"count":1}}`)
 	})
+	// Any other ticket (e.g. 10104): no conversations
+	mux.HandleFunc("/api/_/tickets/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"conversations":[],"meta":{"count":0}}`)
+	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -191,8 +196,11 @@ func TestTicketsCategorizeCmd(t *testing.T) {
 	if !strings.Contains(out, "10103") {
 		t.Errorf("expected unassigned ticket 10103:\n%s", out)
 	}
-	if !strings.Contains(out, "# Agent replied > 1.0 days, awaiting customer (1)") {
-		t.Errorf("expected 1 stale agent ticket:\n%s", out)
+	if !strings.Contains(out, "# Agent replied > 1.0 days, awaiting customer (2)") {
+		t.Errorf("expected 2 stale-agent tickets:\n%s", out)
+	}
+	if !strings.Contains(out, "10104") {
+		t.Errorf("expected no-conversation ticket 10104 in stale list using created date:\n%s", out)
 	}
 	if !strings.Contains(out, "# Customer replied, awaiting agent (1)") {
 		t.Errorf("expected 1 customer-responded ticket:\n%s", out)
