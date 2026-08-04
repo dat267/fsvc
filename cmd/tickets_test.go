@@ -164,7 +164,12 @@ func TestTicketsClassifyCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(loadFixture(t, "tickets.json"))
+		if strings.Contains(r.URL.Query().Get("query_hash"), "responder_id") {
+			// self-assigned query: only assigned tickets
+			_, _ = fmt.Fprint(w, `{"tickets":[{"id":10100,"subject":"Request for Omar Saleh : Customer Support Ticket","priority":2,"status":2,"responder_id":3100,"created_at":"2026-07-29T16:42:48+04:00"},{"id":10101,"subject":"Printer not working","priority":1,"status":4,"responder_id":3101,"created_at":"2026-07-28T10:00:00+04:00"},{"id":10104,"subject":"Old ticket with no messages","priority":2,"status":2,"responder_id":3102,"created_at":"2026-07-25T00:00:00+04:00"}],"meta":{"has_next":false}}`)
+		} else {
+			_, _ = w.Write(loadFixture(t, "tickets.json"))
+		}
 	})
 	// Ticket 10100: assigned, latest conversation incoming=false, July 31 2026 (4 days ago)
 	mux.HandleFunc("/api/_/tickets/10100/conversations", func(w http.ResponseWriter, r *http.Request) {
@@ -274,8 +279,8 @@ func TestTicketsClassifyCmd_Pagination(t *testing.T) {
 		}
 	})
 
-	if calls != 2 {
-		t.Errorf("expected 2 pages fetched, got %d", calls)
+	if calls != 4 {
+		t.Errorf("expected 4 page fetches (2 pages x 2 queries), got %d", calls)
 	}
 	if !strings.Contains(out, "99991") || !strings.Contains(out, "99992") {
 		t.Errorf("expected tickets from both pages:\n%s", out)

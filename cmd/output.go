@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type Column struct {
@@ -74,11 +75,11 @@ func FormatValue(v any) string {
 func RenderTable(columns []Column, rows []map[string]any) string {
 	widths := make([]int, len(columns))
 	for i, col := range columns {
-		widths[i] = len(col.Header)
+		widths[i] = utf8.RuneCountInString(col.Header)
 	}
 	for _, row := range rows {
 		for i, col := range columns {
-			if w := len(FormatValue(Lookup(row, col.Path))); w > widths[i] {
+			if w := utf8.RuneCountInString(FormatValue(Lookup(row, col.Path))); w > widths[i] {
 				widths[i] = w
 			}
 		}
@@ -89,7 +90,7 @@ func RenderTable(columns []Column, rows []map[string]any) string {
 		b.WriteString("| ")
 		for i, cell := range cells {
 			b.WriteString(cell)
-			b.WriteString(strings.Repeat(" ", widths[i]-len(cell)))
+			b.WriteString(strings.Repeat(" ", widths[i]-utf8.RuneCountInString(cell)))
 			if i < len(cells)-1 {
 				b.WriteString(" | ")
 			}

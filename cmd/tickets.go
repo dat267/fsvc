@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"fsvc/internal/fsapi"
 )
@@ -123,12 +124,26 @@ const categoriesWorkers = 8
 func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	threshold := subBusinessDays(nowInTZ(), c.OlderThanDays)
 
-	tickets, err := c.collectTickets(ctx, client)
+	// All unresolved tickets: used only to detect the unassigned list.
+	// No conversation fetches happen here.
+	allTickets, err := c.collectTickets(ctx, client, unresolvedHash)
 	if err != nil {
 		return err
 	}
+	var unassigned []catTicket
+	for _, t := range allTickets {
+		if isUnassigned(t) {
+			unassigned = append(unassigned, catTicket{id: idOf(t), ticket: t})
+		}
+	}
 
-	unassigned, staleAgent, awaitingCustomer, err := classifyTickets(ctx, client, tickets, threshold)
+	// Self-assigned unresolved tickets only: the expensive conversation
+	// scan runs against this smaller set.
+	myTickets, err := c.collectTickets(ctx, client, selfAssignedHash)
+	if err != nil {
+		return err
+	}
+	staleAgent, awaitingCustomer, err := classifyTickets(ctx, client, myTickets, threshold)
 	if err != nil {
 		return err
 	}
@@ -143,17 +158,33 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) erro
 		return awaitingCustomer[i].lastMsgAt.Before(awaitingCustomer[j].lastMsgAt)
 	})
 
-	fmt.Printf("# Unassigned (%d)\n", len(unassigned))
+	fmt.Printf("# Unassigned (%d)\n\n", len(unassigned))
 	printCatTable(unassigned, client)
-	fmt.Printf("\n# Agent replied > %d business days, awaiting customer (%d)\n", c.OlderThanDays, len(staleAgent))
+	fmt.Printf("\n# Agent replied > %d business days, awaiting customer (%d)\n\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, client)
-	fmt.Printf("\n# Customer replied, awaiting agent (%d)\n", len(awaitingCustomer))
+	fmt.Printf("\n# Customer replied, awaiting agent (%d)\n\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, client)
 	return nil
 }
 
+const (
+	unresolvedHash   = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]`
+	selfAssignedHash = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`
+)
+
+func idOf(t map[string]any) float64 {
+	if id, ok := t["id"].(float64); ok {
+		return id
+	}
+	return 0
+}
+
+func isUnassigned(t map[string]any) bool {
+	return t["responder_id"] == nil || t["responder_id"] == float64(-1)
+}
+
 // collectTickets paginates through the tickets list, collecting every page.
-func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.Client) ([]map[string]any, error) {
+func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.Client, defaultHash string) ([]map[string]any, error) {
 	var tickets []map[string]any
 	page := c.Page
 
@@ -180,7 +211,7 @@ func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.C
 		} else if c.Filter != 0 {
 			q.Set("filter", strconv.FormatInt(c.Filter, 10))
 		} else {
-			q.Set("query_hash", `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]`)
+			q.Set("query_hash", defaultHash)
 		}
 
 		data, err := client.Get(ctx, "tickets", q)
@@ -211,13 +242,13 @@ func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.C
 // classifyTickets assigns each ticket to a category using a bounded worker
 // pool. The conversation fetch per ticket is the slow part and runs
 // concurrently; results are collected under a mutex.
-func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []map[string]any, threshold time.Time) (unassigned, staleAgent, awaitingCustomer []catTicket, _ error) {
+func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []map[string]any, threshold time.Time) (staleAgent, awaitingCustomer []catTicket, _ error) {
 	workers := categoriesWorkers
 	if len(tickets) < workers {
 		workers = len(tickets)
 	}
 	if workers == 0 {
-		return nil, nil, nil, nil
+		return nil, nil, nil
 	}
 
 	work := make(chan map[string]any)
@@ -240,8 +271,6 @@ func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []map[st
 				}
 				mu.Lock()
 				switch kind {
-				case catUnassigned:
-					unassigned = append(unassigned, entry)
 				case catStale:
 					staleAgent = append(staleAgent, entry)
 				case catCustomer:
@@ -259,28 +288,23 @@ func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []map[st
 	wg.Wait()
 
 	if firstErr != nil {
-		return nil, nil, nil, firstErr
+		return nil, nil, firstErr
 	}
-	return unassigned, staleAgent, awaitingCustomer, nil
+	return staleAgent, awaitingCustomer, nil
 }
 
 type catKind int
 
 const (
 	catNone catKind = iota
-	catUnassigned
 	catStale
 	catCustomer
 )
 
 // classifyTicket decides which category a single ticket belongs to.
 func classifyTicket(ctx context.Context, client *fsapi.Client, t map[string]any, threshold time.Time) (catTicket, catKind, error) {
-	id := t["id"].(float64)
+	id := idOf(t)
 	entry := catTicket{id: id, ticket: t}
-
-	if r := t["responder_id"]; r == nil || r == float64(-1) {
-		return entry, catUnassigned, nil
-	}
 
 	latest, hasMsg, err := fetchLatestConversation(ctx, client, id)
 	if err != nil {
@@ -370,10 +394,11 @@ func printCatTable(entries []catTicket, client *fsapi.Client) {
 }
 
 func truncate(s string, max int) string {
-	if max <= 3 || len(s) <= max {
+	if max <= 3 || utf8.RuneCountInString(s) <= max {
 		return s
 	}
-	return s[:max-3] + "..."
+	runes := []rune(s)
+	return string(runes[:max-3]) + "..."
 }
 
 func ts(v any) string {
