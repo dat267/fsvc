@@ -156,22 +156,43 @@ func TestTicketsConvCmd(t *testing.T) {
 	}
 }
 
-func TestTicketsRequestedCmd(t *testing.T) {
-	srv := serveFixture(t, "requested_items.json", func(r *http.Request) {
-		if r.URL.Path != "/api/_/tickets/10100/requested_items/7101" {
-			t.Errorf("expected requested_items path, got %s", r.URL.Path)
-		}
+func TestTicketsCategorizeCmd(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(loadFixture(t, "tickets.json"))
 	})
+	// Ticket 10100: assigned, latest conversation incoming=false, July 31 2026 (4 days ago)
+	mux.HandleFunc("/api/_/tickets/10100/conversations", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"conversations":[{"id":1,"incoming":false,"created_at":"2026-07-31T00:00:00Z","user_id":1,"body_text":"."}],"meta":{"count":1}}`)
+	})
+	// Ticket 10101: assigned, latest conversation incoming=true, today
+	mux.HandleFunc("/api/_/tickets/10101/conversations", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"conversations":[{"id":2,"incoming":true,"created_at":"2026-08-04T00:00:00Z","user_id":2,"body_text":"."}],"meta":{"count":1}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsRequestedCmd{ID: 10100, ItemID: 7101}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsCategorizeCmd{OlderThanDays: 1}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	if !strings.Contains(out, "This request is for other tickets") {
-		t.Errorf("expected item.short_description in output:\n%s", out)
+	if !strings.Contains(out, "# Unassigned (1)") {
+		t.Errorf("expected 1 unassigned ticket:\n%s", out)
+	}
+	if !strings.Contains(out, "10103") {
+		t.Errorf("expected unassigned ticket 10103:\n%s", out)
+	}
+	if !strings.Contains(out, "# Agent replied > 1.0 days, awaiting customer (1)") {
+		t.Errorf("expected 1 stale agent ticket:\n%s", out)
+	}
+	if !strings.Contains(out, "# Customer replied, awaiting agent (1)") {
+		t.Errorf("expected 1 customer-responded ticket:\n%s", out)
 	}
 }
 
