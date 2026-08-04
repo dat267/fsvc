@@ -4,8 +4,11 @@
 package biz
 
 import (
+	"sync"
 	"time"
 )
+
+var locCache sync.Map
 
 // NowInTZ returns the current time in the given IANA location, or local time
 // when loc is empty or invalid.
@@ -13,17 +16,21 @@ func NowInTZ(loc string) time.Time {
 	if loc == "" {
 		return time.Now()
 	}
+	if val, ok := locCache.Load(loc); ok {
+		return time.Now().In(val.(*time.Location))
+	}
 	l, err := time.LoadLocation(loc)
 	if err != nil {
 		return time.Now()
 	}
+	locCache.Store(loc, l)
 	return time.Now().In(l)
 }
 
 // AddBusinessDays adds n weekdays, skipping weekends.
 func AddBusinessDays(t time.Time, n int) time.Time {
 	for i := 0; i < n; {
-		t = t.Add(24 * time.Hour)
+		t = t.AddDate(0, 0, 1)
 		if isWeekday(t) {
 			i++
 		}
@@ -34,7 +41,7 @@ func AddBusinessDays(t time.Time, n int) time.Time {
 // SubBusinessDays subtracts n weekdays, skipping weekends.
 func SubBusinessDays(t time.Time, n int) time.Time {
 	for i := 0; i < n; {
-		t = t.Add(-24 * time.Hour)
+		t = t.AddDate(0, 0, -1)
 		if isWeekday(t) {
 			i++
 		}
@@ -51,6 +58,7 @@ func BusinessDaysBetween(from, to time.Time) float64 {
 	}
 
 	loc := to.Location()
+	from = from.In(loc)
 	start := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, loc)
 	end := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, loc)
 

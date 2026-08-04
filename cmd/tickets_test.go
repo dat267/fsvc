@@ -249,15 +249,44 @@ func TestTicketsClassifyCmd_QueryJSON(t *testing.T) {
 	}
 }
 
+func TestTicketsClassifyCmd_CustomFilterSingleFetch(t *testing.T) {
+	fetchCount := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		fetchCount++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(loadFixture(t, "tickets.json"))
+	})
+	mux.HandleFunc("/api/_/tickets/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"conversations":[],"meta":{"count":0}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cmd := &TicketsClassifyCmd{Filter: 123, Page: 1, PerPage: 100}
+	err := cmd.Run(context.Background(), newTestClient(srv.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if fetchCount != 1 {
+		t.Errorf("expected custom filter to execute exactly 1 list fetch, got %d", fetchCount)
+	}
+}
+
 func TestTicketsClassifyCmd_Pagination(t *testing.T) {
+	var mu sync.Mutex
 	calls := 0
 	var pages []string
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
-		calls++
 		p := r.URL.Query().Get("page")
+		mu.Lock()
+		calls++
 		pages = append(pages, p)
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		if p == "1" {
 			_, _ = fmt.Fprint(w, `{"tickets":[{"id":99991,"subject":"Page 1 ticket","group_id":1,"responder_id":99,"priority":1,"status":2,"created_at":"2026-07-01T00:00:00Z"}],"meta":{"has_next":true}}`)

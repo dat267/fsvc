@@ -1,9 +1,6 @@
 package biz
 
-// PriorityByUrgencyImpact is the standard Freshservice priority matrix:
-// rows are urgency (1=Low..3=High), columns are impact (1=Low..3=High),
-// cells are priority (1=Low..4=Urgent).
-var PriorityByUrgencyImpact = map[int]map[int]int{
+var priorityMatrix = [4][4]int{
 	1: {1: 1, 2: 1, 3: 2},
 	2: {1: 1, 2: 2, 3: 3},
 	3: {1: 2, 2: 3, 3: 4},
@@ -30,5 +27,8 @@ func MinUrgencyImpactForPriority(priority int) (urgency, impact int, ok bool) {
 // PriorityFor returns the priority for a given urgency and impact, or 0 when
 // the pair is unknown.
 func PriorityFor(urgency, impact int) int {
-	return PriorityByUrgencyImpact[urgency][impact]
+	if urgency < 1 || urgency > 3 || impact < 1 || impact > 3 {
+		return 0
+	}
+	return priorityMatrix[urgency][impact]
 }

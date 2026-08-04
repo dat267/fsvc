@@ -7,7 +7,7 @@ import (
 
 // Ticket is a Freshservice ticket with the fields the CLI uses.
 type Ticket struct {
-	ID               float64
+	ID               int64
 	Subject          string
 	Priority         int
 	Urgency          int
@@ -24,7 +24,7 @@ func (t Ticket) HasPlannedStartDate() bool { return t.PlannedStartDate != nil }
 
 // Conversation is a single ticket conversation.
 type Conversation struct {
-	ID        float64
+	ID        int64
 	Incoming  bool
 	CreatedAt time.Time
 }
@@ -32,7 +32,7 @@ type Conversation struct {
 // ParseTicket converts a decoded JSON ticket object into a typed Ticket.
 func ParseTicket(raw map[string]any) Ticket {
 	return Ticket{
-		ID:               floatOf(raw["id"]),
+		ID:               int64Of(raw["id"]),
 		Subject:          stringOf(raw["subject"]),
 		Priority:         intOf(raw["priority"]),
 		Urgency:          intOf(raw["urgency"]),
@@ -45,9 +45,9 @@ func ParseTicket(raw map[string]any) Ticket {
 	}
 }
 
-func floatOf(v any) float64 {
+func int64Of(v any) int64 {
 	if f, ok := v.(float64); ok {
-		return f
+		return int64(f)
 	}
 	return 0
 }
@@ -116,9 +116,9 @@ func decodeTickets(body []byte) ([]Ticket, bool, error) {
 func decodeConversations(body []byte) ([]Conversation, error) {
 	var doc struct {
 		Conversations []struct {
-			ID        float64 `json:"id"`
-			Incoming  bool    `json:"incoming"`
-			CreatedAt string  `json:"created_at"`
+			ID        int64  `json:"id"`
+			Incoming  bool   `json:"incoming"`
+			CreatedAt string `json:"created_at"`
 		} `json:"conversations"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {

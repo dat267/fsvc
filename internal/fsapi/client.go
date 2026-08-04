@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,7 @@ type ClientConfig struct {
 }
 
 type Client struct {
+	mu      sync.RWMutex
 	baseURL string
 	cookie  string
 	csrf    string
@@ -44,20 +46,30 @@ func New(cfg ClientConfig) *Client {
 // Update reconfigures the connection credentials. Called after Kong resolves
 // flags/env/config-file values, before commands run.
 func (c *Client) Update(cfg ClientConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if cfg.BaseURL != "" {
 		c.baseURL = strings.TrimSuffix(cfg.BaseURL, "/")
 	} else if cfg.Subdomain != "" {
 		c.baseURL = "https://" + cfg.Subdomain + ".freshservice.com"
 	}
-	c.cookie = cfg.Cookie
-	c.csrf = cfg.CSRF
+	if cfg.Cookie != "" {
+		c.cookie = cfg.Cookie
+	}
+	if cfg.CSRF != "" {
+		c.csrf = cfg.CSRF
+	}
 }
 
 func (c *Client) SetCSRF(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.csrf = token
 }
 
 func (c *Client) BaseURL() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.baseURL
 }
 
@@ -70,14 +82,20 @@ func (c *Client) Put(ctx context.Context, path string, body []byte) ([]byte, err
 }
 
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body []byte) ([]byte, error) {
-	if c.baseURL == "" {
+	c.mu.RLock()
+	baseURL := c.baseURL
+	cookie := c.cookie
+	csrf := c.csrf
+	c.mu.RUnlock()
+
+	if baseURL == "" {
 		return nil, errors.New("no API base URL configured (set subdomain or --base-url; run 'fsvc config set subdomain <domain>')")
 	}
-	if c.cookie == "" {
+	if cookie == "" {
 		return nil, errors.New("no session cookie configured (run 'fsvc config set cookie <cookie>')")
 	}
 
-	u := c.baseURL + "/api/_/" + path
+	u := baseURL + "/api/_/" + strings.TrimPrefix(path, "/")
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
@@ -91,19 +109,22 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Cookie", c.cookie)
+	req.Header.Set("Cookie", cookie)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	}
-	if c.csrf != "" {
-		req.Header.Set("X-CSRF-Token", c.csrf)
+	if csrf != "" {
+		req.Header.Set("X-CSRF-Token", csrf)
 	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
 
 	if err := c.CheckStatus(resp); err != nil {
 		return nil, err

@@ -60,6 +60,12 @@ func TestPriorityFor(t *testing.T) {
 	if PriorityFor(3, 1) != 2 {
 		t.Error("urgency 3 impact 1 should be priority 2")
 	}
+	if PriorityFor(0, 0) != 0 {
+		t.Error("urgency 0 impact 0 should return 0")
+	}
+	if PriorityFor(4, 1) != 0 {
+		t.Error("urgency 4 impact 1 should return 0")
+	}
 }
 
 func TestClassify(t *testing.T) {

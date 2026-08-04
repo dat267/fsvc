@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -152,11 +153,11 @@ func csvEscape(s string) string {
 }
 
 func PrettyJSON(body []byte) ([]byte, error) {
-	var v any
-	if err := json.Unmarshal(body, &v); err != nil {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, body, "", "  "); err != nil {
 		return nil, err
 	}
-	return json.MarshalIndent(v, "", "  ")
+	return buf.Bytes(), nil
 }
 
 // Print renders a response body per the requested format and writes it to

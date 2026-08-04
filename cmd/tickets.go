@@ -114,7 +114,7 @@ var classifyColumns = []Column{
 }
 
 type catTicket struct {
-	id        float64
+	id        int64
 	ticket    fsapi.Ticket
 	lastMsgAt time.Time
 }
@@ -124,12 +124,36 @@ const categoriesWorkers = 8
 func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	threshold := biz.SubBusinessDays(nowInTZ(), c.OlderThanDays)
 
-	// All unresolved tickets: used only to detect the unassigned list.
-	// No conversation fetches happen here.
-	allTickets, err := c.collectTickets(ctx, client, unresolvedHash)
-	if err != nil {
-		return err
+	var allTickets, myTickets []fsapi.Ticket
+
+	if c.QueryJSON != "" || c.Filter != 0 {
+		var err error
+		allTickets, err = c.collectTickets(ctx, client, "")
+		if err != nil {
+			return err
+		}
+		myTickets = allTickets
+	} else {
+		var wg sync.WaitGroup
+		var errAll, errMy error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			allTickets, errAll = c.collectTickets(ctx, client, unresolvedHash)
+		}()
+		go func() {
+			defer wg.Done()
+			myTickets, errMy = c.collectTickets(ctx, client, selfAssignedHash)
+		}()
+		wg.Wait()
+		if errAll != nil {
+			return errAll
+		}
+		if errMy != nil {
+			return errMy
+		}
 	}
+
 	var unassigned []catTicket
 	for _, t := range allTickets {
 		if t.ResponderID == nil || *t.ResponderID < 0 {
@@ -137,12 +161,6 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) erro
 		}
 	}
 
-	// Self-assigned unresolved tickets only: the expensive conversation
-	// scan runs against this smaller set.
-	myTickets, err := c.collectTickets(ctx, client, selfAssignedHash)
-	if err != nil {
-		return err
-	}
 	staleAgent, awaitingCustomer, err := classifyTickets(ctx, client, myTickets, threshold)
 	if err != nil {
 		return err
@@ -215,7 +233,15 @@ func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []fsapi.
 		return nil, nil, nil
 	}
 
-	work := make(chan fsapi.Ticket)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	work := make(chan fsapi.Ticket, len(tickets))
+	for _, t := range tickets {
+		work <- t
+	}
+	close(work)
+
 	var (
 		wg       sync.WaitGroup
 		mu       sync.Mutex
@@ -228,10 +254,16 @@ func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []fsapi.
 		go func() {
 			defer wg.Done()
 			for t := range work {
+				if ctx.Err() != nil {
+					return
+				}
 				entry, kind, err := classifyTicket(ctx, client, t, threshold)
 				if err != nil {
-					errOnce.Do(func() { firstErr = err })
-					continue
+					errOnce.Do(func() {
+						firstErr = err
+						cancel()
+					})
+					return
 				}
 				mu.Lock()
 				switch kind {
@@ -245,10 +277,6 @@ func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []fsapi.
 		}()
 	}
 
-	for _, t := range tickets {
-		work <- t
-	}
-	close(work)
 	wg.Wait()
 
 	if firstErr != nil {
@@ -263,7 +291,7 @@ func classifyTicket(ctx context.Context, client *fsapi.Client, t fsapi.Ticket, t
 
 	latest, err := client.LatestConversation(ctx, t.ID)
 	if err != nil {
-		return entry, biz.CategoryNone, fmt.Errorf("ticket %.0f: %w", t.ID, err)
+		return entry, biz.CategoryNone, fmt.Errorf("ticket %d: %w", t.ID, err)
 	}
 
 	lastMsg := time.Time{}
@@ -296,7 +324,7 @@ func printCatTable(entries []catTicket, client *fsapi.Client) {
 		}
 		rows[i] = map[string]any{
 			"subject": truncate(e.ticket.Subject, 40),
-			"link":    fmt.Sprintf("%s/a/tickets/%.0f", client.BaseURL(), e.id),
+			"link":    fmt.Sprintf("%s/a/tickets/%d", client.BaseURL(), e.id),
 			"days":    fmt.Sprintf("%.1f", biz.BusinessDaysBetween(ref, nowInTZ())),
 		}
 	}
@@ -307,8 +335,15 @@ func truncate(s string, max int) string {
 	if max <= 3 || utf8.RuneCountInString(s) <= max {
 		return s
 	}
-	runes := []rune(s)
-	return string(runes[:max-3]) + "..."
+	targetRunes := max - 3
+	count := 0
+	for idx := range s {
+		if count == targetRunes {
+			return s[:idx] + "..."
+		}
+		count++
+	}
+	return s
 }
 
 type TicketsUpdateCmd struct {
@@ -358,7 +393,7 @@ func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error 
 
 // pendingChange describes a single ticket update for preview and apply.
 type pendingChange struct {
-	id    float64
+	id    int64
 	field string
 	from  string
 	to    string
@@ -542,13 +577,13 @@ func collectMyTickets(ctx context.Context, client *fsapi.Client, perPage int) ([
 func paginateTickets(ctx context.Context, client *fsapi.Client, baseQuery url.Values, startPage int) ([]fsapi.Ticket, error) {
 	var tickets []fsapi.Ticket
 	page := startPage
+	q := make(url.Values, len(baseQuery)+1)
+	for k, vs := range baseQuery {
+		vs2 := make([]string, len(vs))
+		copy(vs2, vs)
+		q[k] = vs2
+	}
 	for {
-		q := url.Values{}
-		for k, vs := range baseQuery {
-			for _, v := range vs {
-				q.Add(k, v)
-			}
-		}
 		q.Set("page", strconv.Itoa(page))
 
 		pageTickets, hasNext, err := client.ListTickets(ctx, q)
@@ -570,7 +605,7 @@ func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendin
 		return nil
 	}
 	for _, ch := range changes {
-		fmt.Printf("[%s] ticket %.0f: %s -> %s\n", ch.field, ch.id, ch.from, ch.to)
+		fmt.Printf("[%s] ticket %d: %s -> %s\n", ch.field, ch.id, ch.from, ch.to)
 	}
 	if !yes && !confirmApply(len(changes)) {
 		fmt.Println("Aborted.")
@@ -582,7 +617,7 @@ func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendin
 	for i, ch := range changes {
 		payload, err := json.Marshal(ch.body)
 		if err != nil {
-			return fmt.Errorf("build payload for ticket %.0f: %w", ch.id, err)
+			return fmt.Errorf("build payload for ticket %d: %w", ch.id, err)
 		}
 		payloads[i] = payload
 	}
@@ -605,13 +640,13 @@ func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendin
 			defer wg.Done()
 			for idx := range work {
 				ch := changes[idx]
-				path := fmt.Sprintf("tickets/%.0f", ch.id)
+				path := fmt.Sprintf("tickets/%d", ch.id)
 				if _, err := client.Put(ctx, path, payloads[idx]); err != nil {
-					errOnce.Do(func() { firstErr = fmt.Errorf("update ticket %.0f: %w", ch.id, err) })
+					errOnce.Do(func() { firstErr = fmt.Errorf("update ticket %d: %w", ch.id, err) })
 					continue
 				}
 				mu.Lock()
-				fmt.Printf("OK: ticket %.0f\n", ch.id)
+				fmt.Printf("OK: ticket %d\n", ch.id)
 				mu.Unlock()
 			}
 		}()
