@@ -167,6 +167,9 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 		id := t["id"].(float64)
 		entry := catTicket{id: id, ticket: t}
 
+		// Unassigned = responder_id null or 0 in the response. Note:
+		// advanced_query_hash uses responder_id -1 for unassigned and 0 for
+		// assigned-to-self (see docs/private-api-notes.md); not used yet.
 		if r := t["responder_id"]; r == nil || r == float64(0) {
 			unassigned = append(unassigned, entry)
 			continue
