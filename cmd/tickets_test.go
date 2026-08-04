@@ -515,7 +515,7 @@ func TestTicketsUpdateCmd_InvalidPair(t *testing.T) {
 	}
 }
 
-func TestTicketsSyncUICmd(t *testing.T) {
+func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 	var putCalls []struct {
 		Path string
 		Body []byte
@@ -547,7 +547,7 @@ func TestTicketsSyncUICmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsSyncUICmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsSyncUrgencyImpactCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
