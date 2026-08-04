@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
+
+	"fsvc/internal/fsapi"
 )
 
 // appName is used for config path resolution. SetAppName overrides it.
@@ -58,6 +60,7 @@ func Execute(ctx context.Context) {
 	activeConfig := app.CfgPath()
 
 	cli := &CLI{}
+	client := fsapi.New(fsapi.ClientConfig{})
 	options := []kong.Option{
 		kong.Name(appName),
 		kong.Description("Freshservice private-API CLI"),
@@ -65,6 +68,7 @@ func Execute(ctx context.Context) {
 		kong.ConfigureHelp(kong.HelpOptions{Compact: true}),
 		kong.BindTo(ctx, (*context.Context)(nil)),
 		kong.Bind(app),
+		kong.Bind(client),
 	}
 
 	if f, err := os.Open(activeConfig); err == nil {
@@ -84,6 +88,7 @@ func Execute(ctx context.Context) {
 	k.FatalIfErrorf(err)
 
 	app.cfgPath = cli.ConfigFile
+	client.Update(clientConfigFromCLI(cli))
 	k.FatalIfErrorf(kongCtx.Run())
 }
 
