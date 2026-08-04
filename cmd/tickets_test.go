@@ -298,29 +298,19 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20}],"meta":{"has_next":false}}`)
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_start_date":null,"created_at":"2026-08-01T12:00:00Z"},{"id":20,"planned_start_date":"2025-01-01T00:00:00Z","created_at":"2026-08-01T12:00:00Z"}],"meta":{"has_next":false}}`)
 	})
-	// Ticket 10: planned_start_date=null, created_at populated → fillable
+	// Ticket 10: planned_start_date=null, created_at populated → fillable (PUT)
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_start_date":null,"created_at":"2026-08-01T12:00:00Z"}}`)
-		} else {
-			b, _ := io.ReadAll(r.Body)
-			putMu.Lock()
-			putCalls = append(putCalls, struct {
-				Path string
-				Body []byte
-			}{Path: r.URL.Path, Body: b})
-			putMu.Unlock()
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
-		}
-	})
-	// Ticket 20: planned_start_date already set → skip
-	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		putMu.Lock()
+		putCalls = append(putCalls, struct {
+			Path string
+			Body []byte
+		}{Path: r.URL.Path, Body: b})
+		putMu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"planned_start_date":"2025-01-01T00:00:00Z","created_at":"2026-08-01T12:00:00Z"}}`)
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -356,43 +346,29 @@ func TestTicketsFillEndDatesCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20},{"id":30}],"meta":{"has_next":false}}`)
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_end_date":null},{"id":20,"planned_end_date":"2099-01-01T00:00:00Z"},{"id":30,"planned_end_date":"2020-01-01T00:00:00Z"}],"meta":{"has_next":false}}`)
 	})
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_end_date":null}}`)
-		} else {
-			b, _ := io.ReadAll(r.Body)
-			putMu.Lock()
-			putCalls = append(putCalls, struct {
-				Path string
-				Body []byte
-			}{Path: r.URL.Path, Body: b})
-			putMu.Unlock()
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
-		}
-	})
-	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		putMu.Lock()
+		putCalls = append(putCalls, struct {
+			Path string
+			Body []byte
+		}{Path: r.URL.Path, Body: b})
+		putMu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"planned_end_date":"2099-01-01T00:00:00Z"}}`)
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
 	})
 	mux.HandleFunc("/api/_/tickets/30", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"planned_end_date":"2020-01-01T00:00:00Z"}}`)
-		} else {
-			b, _ := io.ReadAll(r.Body)
-			putMu.Lock()
-			putCalls = append(putCalls, struct {
-				Path string
-				Body []byte
-			}{Path: r.URL.Path, Body: b})
-			putMu.Unlock()
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":30}}`)
-		}
+		b, _ := io.ReadAll(r.Body)
+		putMu.Lock()
+		putCalls = append(putCalls, struct {
+			Path string
+			Body []byte
+		}{Path: r.URL.Path, Body: b})
+		putMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":30}}`)
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()

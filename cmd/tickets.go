@@ -477,7 +477,7 @@ type TicketsFillStartDatesCmd struct {
 func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	var changes []pendingChange
 
-	if err := forEachMyTicket(ctx, client, c.PerPage, true, func(id float64, ticket map[string]any) error {
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
 		psd, hasPSD := ticket["planned_start_date"]
 		if !hasPSD || psd != nil {
 			return nil
@@ -510,7 +510,7 @@ func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) 
 	target := addBusinessDays(base, c.Days).Format(time.RFC3339)
 
 	var changes []pendingChange
-	if err := forEachMyTicket(ctx, client, c.PerPage, true, func(id float64, ticket map[string]any) error {
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
 		ped := ticket["planned_end_date"]
 		cur := ""
 		if s, ok := ped.(string); ok {
@@ -551,7 +551,7 @@ type TicketsSyncUrgencyImpactCmd struct {
 func (c *TicketsSyncUrgencyImpactCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	var changes []pendingChange
 
-	if err := forEachMyTicket(ctx, client, c.PerPage, false, func(id float64, ticket map[string]any) error {
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
 		p, ok := ticket["priority"].(float64)
 		if !ok {
 			return nil
@@ -605,7 +605,7 @@ type TicketsSyncPriorityCmd struct {
 func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	var changes []pendingChange
 
-	if err := forEachMyTicket(ctx, client, c.PerPage, false, func(id float64, ticket map[string]any) error {
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(id float64, ticket map[string]any) error {
 		u, _ := ticket["urgency"].(float64)
 		i, _ := ticket["impact"].(float64)
 		p, _ := ticket["priority"].(float64)
@@ -636,35 +636,15 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) 
 // ---- helpers ----------------------------------------------------------------
 
 // forEachMyTicket paginates through self-assigned unresolved tickets and calls
-// fn sequentially for each. When full is true, each ticket's complete data is
-// fetched via /tickets/{id} concurrently first (needed for planned_* fields);
-// otherwise the list-level ticket data is used directly.
-func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, full bool, fn func(id float64, ticket map[string]any) error) error {
+// fn sequentially for each, using the list-level ticket data directly.
+func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn func(id float64, ticket map[string]any) error) error {
 	list, err := collectMyTickets(ctx, client, perPage)
 	if err != nil {
 		return err
 	}
 
-	ids := make([]float64, len(list))
-	for i, t := range list {
-		ids[i] = idOf(t)
-	}
-
-	if !full {
-		for i, id := range ids {
-			if err := fn(id, list[i]); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	fullTickets, err := fetchFullTickets(ctx, client, ids)
-	if err != nil {
-		return err
-	}
-	for i, id := range ids {
-		if err := fn(id, fullTickets[i]); err != nil {
+	for _, t := range list {
+		if err := fn(idOf(t), t); err != nil {
 			return err
 		}
 	}
@@ -702,63 +682,6 @@ func collectMyTickets(ctx context.Context, client *fsapi.Client, perPage int) ([
 		page++
 	}
 	return tickets, nil
-}
-
-// fetchFullTickets GETs each ticket concurrently, returning them in input order.
-func fetchFullTickets(ctx context.Context, client *fsapi.Client, ids []float64) ([]map[string]any, error) {
-	full := make([]map[string]any, len(ids))
-	if len(ids) == 0 {
-		return full, nil
-	}
-
-	workers := categoriesWorkers
-	if len(ids) < workers {
-		workers = len(ids)
-	}
-
-	work := make(chan int)
-	var (
-		wg       sync.WaitGroup
-		mu       sync.Mutex
-		firstErr error
-		errOnce  sync.Once
-	)
-
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for idx := range work {
-				id := ids[idx]
-				data, err := client.Get(ctx, fmt.Sprintf("tickets/%.0f", id), nil)
-				if err != nil {
-					errOnce.Do(func() { firstErr = fmt.Errorf("get ticket %.0f: %w", id, err) })
-					continue
-				}
-				var doc struct {
-					Ticket map[string]any `json:"ticket"`
-				}
-				if err := json.Unmarshal(data, &doc); err != nil {
-					errOnce.Do(func() { firstErr = fmt.Errorf("parse ticket %.0f: %w", id, err) })
-					continue
-				}
-				mu.Lock()
-				full[idx] = doc.Ticket
-				mu.Unlock()
-			}
-		}()
-	}
-
-	for i := range ids {
-		work <- i
-	}
-	close(work)
-	wg.Wait()
-
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	return full, nil
 }
 
 func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendingChange, yes bool, buildBody func(pendingChange) ([]byte, error)) error {
