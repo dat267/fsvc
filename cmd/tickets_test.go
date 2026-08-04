@@ -539,7 +539,7 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20},{"id":30}],"meta":{"has_next":false}}`)
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"priority":2,"urgency":2,"impact":2},{"id":20,"priority":3,"urgency":1,"impact":1},{"id":30,"priority":4,"urgency":3,"impact":3}],"meta":{"has_next":false}}`)
 	})
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -611,7 +611,7 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20},{"id":30}],"meta":{"has_next":false}}`)
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"priority":2,"urgency":3,"impact":3},{"id":20,"priority":2,"urgency":2,"impact":2},{"id":30,"priority":3,"urgency":3,"impact":1}],"meta":{"has_next":false}}`)
 	})
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
