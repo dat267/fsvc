@@ -178,7 +178,7 @@ func TestTicketsRequestedCmd(t *testing.T) {
 func TestTicketsListCmd_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, `{"errors":["boom"]}`)
+		_, _ = fmt.Fprint(w, `{"errors":["boom"]}`)
 	}))
 	defer srv.Close()
 
@@ -212,11 +212,12 @@ func TestTicketsUpdateCmd_Pairs(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := &TicketsUpdateCmd{
-			ID:        10100,
-			Pairs:     []string{"priority=1", "group_id=4001", "custom_fields.type_of_ticket_received=Duplicate"},
-			CSRFToken: "tok123",
+			ID:    10100,
+			Pairs: []string{"priority=1", "group_id=4001", "custom_fields.type_of_ticket_received=Duplicate"},
 		}
-		if err := cmd.Run(context.Background(), newTestClient(srv.URL)); err != nil {
+		client := newTestClient(srv.URL)
+		client.SetCSRF("tok123")
+		if err := cmd.Run(context.Background(), client); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})

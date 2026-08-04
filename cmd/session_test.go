@@ -19,7 +19,7 @@ func TestSessionCmd_OK(t *testing.T) {
 		if r.URL.Query().Get("per_page") != "1" {
 			t.Errorf("expected per_page=1, got %v", r.URL.Query())
 		}
-		fmt.Fprint(w, `{"meta":{"count":7},"tickets":[]}`)
+		_, _ = fmt.Fprint(w, `{"meta":{"count":7},"tickets":[]}`)
 	}))
 	defer srv.Close()
 
@@ -38,7 +38,7 @@ func TestSessionCmd_OK(t *testing.T) {
 func TestSessionCmd_Unauthorized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{}`)
+		_, _ = fmt.Fprint(w, `{}`)
 	}))
 	defer srv.Close()
 

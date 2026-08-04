@@ -21,7 +21,7 @@ func TestClient_Get(t *testing.T) {
 		gotCookie = r.Header.Get("Cookie")
 		gotCSRF = r.Header.Get("X-CSRF-Token")
 		w.Header().Set("Set-Cookie", "_itildesk_session=rotated123")
-		fmt.Fprint(w, `{"ok":true}`)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
 	}))
 	defer srv.Close()
 
@@ -75,7 +75,7 @@ func TestClient_MissingConfig(t *testing.T) {
 func TestClient_Unauthorized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{"errors":[]}`)
+		_, _ = fmt.Fprint(w, `{"errors":[]}`)
 	}))
 	defer srv.Close()
 
@@ -89,7 +89,7 @@ func TestClient_Unauthorized(t *testing.T) {
 func TestClient_Non2xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprint(w, `{"errors":["nope"]}`)
+		_, _ = fmt.Fprint(w, `{"errors":["nope"]}`)
 	}))
 	defer srv.Close()
 
@@ -112,7 +112,7 @@ func TestClient_Put(t *testing.T) {
 		gotBody = make([]byte, r.ContentLength)
 		_, _ = r.Body.Read(gotBody)
 		w.Header().Set("X-CSRF-Token", "newtok")
-		fmt.Fprint(w, `{"ticket":{}}`)
+		_, _ = fmt.Fprint(w, `{"ticket":{}}`)
 	}))
 	defer srv.Close()
 
@@ -153,7 +153,7 @@ func TestClient_CookieJarRotation(t *testing.T) {
 		} else {
 			secondCookie = r.Header.Get("Cookie")
 		}
-		fmt.Fprint(w, `{}`)
+		_, _ = fmt.Fprint(w, `{}`)
 	}))
 	defer srv.Close()
 
@@ -172,7 +172,7 @@ func TestClient_CookieJarRotation(t *testing.T) {
 
 func TestClient_GetJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"meta":{"count":7}}`)
+		_, _ = fmt.Fprint(w, `{"meta":{"count":7}}`)
 	}))
 	defer srv.Close()
 

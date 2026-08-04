@@ -111,11 +111,10 @@ func (c *TicketsRequestedCmd) Run(ctx context.Context, client *fsapi.Client) err
 }
 
 type TicketsUpdateCmd struct {
-	Format    string   `help:"Output format" enum:"table,json,csv" default:"table"`
-	Body      string   `help:"Raw JSON body (overrides key=value pairs)"`
-	CSRFToken string   `help:"CSRF token (overrides config value)"`
-	ID        int64    `arg:"" help:"Ticket ID"`
-	Pairs     []string `arg:"" help:"key=value pairs to update (e.g. priority=1)"`
+	Format string   `help:"Output format" enum:"table,json,csv" default:"table"`
+	Body   string   `help:"Raw JSON body (overrides key=value pairs)"`
+	ID     int64    `arg:"" help:"Ticket ID"`
+	Pairs  []string `arg:"" help:"key=value pairs to update (e.g. priority=1)"`
 }
 
 var ticketsUpdateColumns = []Column{
@@ -146,10 +145,6 @@ func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error 
 		}
 	default:
 		return errors.New("nothing to update: provide key=value pairs or --body")
-	}
-
-	if c.CSRFToken != "" {
-		client.SetCSRF(c.CSRFToken)
 	}
 
 	path := fmt.Sprintf("tickets/%d", c.ID)
