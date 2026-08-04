@@ -281,6 +281,87 @@ func TestTicketsCategorizeCmd_Pagination(t *testing.T) {
 	}
 }
 
+func TestTicketsFillStartDatesCmd(t *testing.T) {
+	var putCalls []struct {
+		Path string
+		Body []byte
+	}
+
+	mux := http.NewServeMux()
+	// List: two tickets assigned to me, unresolved
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10},{"id":20}],"meta":{"has_next":false}}`)
+	})
+	// Ticket 10: planned_start_date=null, first_responded_at populated → fillable
+	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_start_date":null,"stats":{"first_responded_at":"2026-08-01T12:00:00Z"}}}`)
+		} else {
+			b, _ := io.ReadAll(r.Body)
+			putCalls = append(putCalls, struct {
+				Path string
+				Body []byte
+			}{Path: r.URL.Path, Body: b})
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
+		}
+	})
+	// Ticket 20: planned_start_date already set → skip
+	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"planned_start_date":"2025-01-01T00:00:00Z","stats":{}}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	out := captureStdout(t, func() {
+		err := (&TicketsFillStartDatesCmd{DryRun: false, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if len(putCalls) != 1 {
+		t.Fatalf("expected 1 PUT call, got %d", len(putCalls))
+	}
+	if string(putCalls[0].Body) != `{"planned_start_date":"2026-08-01T12:00:00Z"}` {
+		t.Errorf("unexpected PUT body: %q", putCalls[0].Body)
+	}
+	if !strings.Contains(out, "Done: 1 filled, 1 skipped") {
+		t.Errorf("expected summary, got %q", out)
+	}
+}
+
+func TestTicketsFillStartDatesCmd_DryRun(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10}],"meta":{"has_next":false}}`)
+	})
+	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			t.Error("PUT should not be called in dry-run mode")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"planned_start_date":null,"stats":{"first_responded_at":"2026-08-01T00:00:00+04:00"}}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	out := captureStdout(t, func() {
+		err := (&TicketsFillStartDatesCmd{DryRun: true, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "[dry-run] ticket 10: planned_start_date=") {
+		t.Errorf("expected dry-run output:\n%s", out)
+	}
+}
+
 func TestTicketsListCmd_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

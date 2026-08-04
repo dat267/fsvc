@@ -14,10 +14,11 @@ import (
 )
 
 type TicketsCmdGroup struct {
-	List          TicketsListCmd       `cmd:"" help:"List tickets"`
-	Conversations TicketsConvCmd       `cmd:"" help:"List conversations for a ticket"`
-	Categorize    TicketsCategorizeCmd `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
-	Update        TicketsUpdateCmd     `cmd:"" help:"Update a ticket"`
+	List           TicketsListCmd           `cmd:"" help:"List tickets"`
+	Conversations  TicketsConvCmd           `cmd:"" help:"List conversations for a ticket"`
+	Categorize     TicketsCategorizeCmd     `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
+	FillStartDates TicketsFillStartDatesCmd `cmd:"" help:"Backfill planned_start_date from first_responded_at on your unresolved tickets"`
+	Update         TicketsUpdateCmd         `cmd:"" help:"Update a ticket"`
 }
 
 type TicketsListCmd struct {
@@ -331,4 +332,83 @@ func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error 
 		return err
 	}
 	return Print(data, "ticket", ticketsUpdateColumns, c.Format)
+}
+
+type TicketsFillStartDatesCmd struct {
+	DryRun  bool `help:"Show what would change without applying"`
+	Page    int  `help:"Page number" default:"1"`
+	PerPage int  `help:"Tickets per page" default:"100"`
+}
+
+func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
+	myFilter := `[{"condition":"responder_id","operator":"is","value":0,"type":"default"},{"condition":"status","operator":"is","value":0,"type":"default"},{"condition":"workspace_id","operator":"is","value":2,"type":"default"}]`
+	filled, skipped, page := 0, 0, c.Page
+
+	for {
+		q := url.Values{"page": {strconv.Itoa(page)}, "per_page": {strconv.Itoa(c.PerPage)},
+			"order_by": {"created_at"}, "order_type": {"asc"},
+			"advanced_query_hash": {myFilter}}
+		data, err := client.Get(ctx, "tickets", q)
+		if err != nil {
+			return err
+		}
+
+		var doc struct {
+			Tickets []struct {
+				ID float64 `json:"id"`
+			} `json:"tickets"`
+			Meta struct {
+				HasNext bool `json:"has_next"`
+			} `json:"meta"`
+		}
+		if err := json.Unmarshal(data, &doc); err != nil {
+			return fmt.Errorf("parse tickets list: %w", err)
+		}
+
+		for _, t := range doc.Tickets {
+			ticketPath := fmt.Sprintf("tickets/%.0f", t.ID)
+			fullData, err := client.Get(ctx, ticketPath, nil)
+			if err != nil {
+				return fmt.Errorf("get ticket %.0f: %w", t.ID, err)
+			}
+
+			var fullDoc struct {
+				Ticket map[string]any `json:"ticket"`
+			}
+			if err := json.Unmarshal(fullData, &fullDoc); err != nil {
+				return fmt.Errorf("parse ticket %.0f: %w", t.ID, err)
+			}
+
+			psd, hasPSD := fullDoc.Ticket["planned_start_date"]
+			if !hasPSD || psd != nil {
+				skipped++
+				continue
+			}
+			stats, _ := fullDoc.Ticket["stats"].(map[string]any)
+			firstResp, _ := stats["first_responded_at"].(string)
+			if firstResp == "" {
+				skipped++
+				continue
+			}
+
+			if c.DryRun {
+				fmt.Printf("[dry-run] ticket %.0f: planned_start_date=%q\n", t.ID, firstResp)
+			} else {
+				payload, _ := json.Marshal(map[string]string{"planned_start_date": firstResp})
+				if _, err := client.Put(ctx, ticketPath, payload); err != nil {
+					return fmt.Errorf("update ticket %.0f: %w", t.ID, err)
+				}
+				fmt.Printf("ticket %.0f: planned_start_date=%q\n", t.ID, firstResp)
+			}
+			filled++
+		}
+
+		if !doc.Meta.HasNext {
+			break
+		}
+		page++
+	}
+
+	fmt.Printf("Done: %d filled, %d skipped\n", filled, skipped)
+	return nil
 }
