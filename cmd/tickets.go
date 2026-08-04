@@ -152,13 +152,13 @@ func (c *TicketsCategorizeCmd) Run(ctx context.Context, client *fsapi.Client) er
 				b, _ := json.Marshal(v)
 				q.Set(k, string(b))
 			}
-	} else if c.Filter != 0 {
-		q.Set("filter", strconv.FormatInt(c.Filter, 10))
-	} else if cfgDefaultFilter != 0 {
-		q.Set("filter", strconv.FormatInt(cfgDefaultFilter, 10))
-	} else {
-		return fmt.Errorf("no filter configured: set default-filter with 'fsvc config set default-filter <id>' or pass --filter")
-	}
+		} else if c.Filter != 0 {
+			q.Set("filter", strconv.FormatInt(c.Filter, 10))
+		} else if cfgDefaultFilter != 0 {
+			q.Set("filter", strconv.FormatInt(cfgDefaultFilter, 10))
+		} else {
+			return fmt.Errorf("no filter configured: set default-filter with 'fsvc config set default-filter <id>' or pass --filter")
+		}
 
 		data, err := client.Get(ctx, "tickets", q)
 		if err != nil {
@@ -347,7 +347,6 @@ type pendingChange struct {
 	to    string
 }
 
-
 func confirmApply(n int) bool {
 	fmt.Printf("\nApply %d changes? [y/N] ", n)
 	var answer string
@@ -520,14 +519,6 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) 
 		v, _ := strconv.ParseFloat(parts[1], 64)
 		return json.Marshal(map[string]any{parts[0]: v})
 	})
-}
-
-func withDefaultFilter(q url.Values) (url.Values, error) {
-	if cfgDefaultFilter == 0 {
-		return nil, fmt.Errorf("no filter configured: set default-filter with 'fsvc config set default-filter <id>'")
-	}
-	q.Set("filter", strconv.FormatInt(cfgDefaultFilter, 10))
-	return q, nil
 }
 
 // ---- helpers ----------------------------------------------------------------
