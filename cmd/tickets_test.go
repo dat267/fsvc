@@ -553,7 +553,7 @@ func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(out, "[priority=2] ticket 10: urgency=3 impact=1 -> urgency=1 impact=3") {
+	if !strings.Contains(out, "[priority=2] ticket 10: urgency=3 impact=1 -> urgency=2 impact=2") {
 		t.Errorf("expected ticket 10 preview, got %q", out)
 	}
 	if strings.Contains(out, "ticket 20") {
