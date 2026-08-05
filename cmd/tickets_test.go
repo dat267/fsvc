@@ -198,19 +198,22 @@ func TestTicketsClassifyCmd(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(out, "# Unassigned (1)") {
+	if !strings.Contains(out, "Scanned 4 unresolved tickets (3 self-assigned, 1 unassigned)") {
+		t.Errorf("expected scan summary:\n%s", out)
+	}
+	if !strings.Contains(out, "## Unassigned (1)") {
 		t.Errorf("expected 1 unassigned ticket:\n%s", out)
 	}
 	if !strings.Contains(out, "10103") {
 		t.Errorf("expected unassigned ticket 10103:\n%s", out)
 	}
-	if !strings.Contains(out, "# Agent replied > 1 business days, awaiting customer (2)") {
+	if !strings.Contains(out, "## Agent replied > 1 business days, awaiting customer (2)") {
 		t.Errorf("expected 2 stale-agent tickets:\n%s", out)
 	}
 	if !strings.Contains(out, "10104") {
 		t.Errorf("expected no-conversation ticket 10104 in stale list using created date:\n%s", out)
 	}
-	if !strings.Contains(out, "# Customer replied, awaiting agent (1)") {
+	if !strings.Contains(out, "## Customer replied, awaiting agent (1)") {
 		t.Errorf("expected 1 customer-responded ticket:\n%s", out)
 	}
 }

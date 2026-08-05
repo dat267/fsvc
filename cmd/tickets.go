@@ -176,11 +176,13 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) erro
 		return awaitingCustomer[i].lastMsgAt.Before(awaitingCustomer[j].lastMsgAt)
 	})
 
-	fmt.Printf("# Unassigned (%d)\n\n", len(unassigned))
+	fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", len(allTickets), len(myTickets), len(unassigned))
+
+	fmt.Printf("## Unassigned (%d)\n\n", len(unassigned))
 	printCatTable(unassigned, client)
-	fmt.Printf("\n# Agent replied > %d business days, awaiting customer (%d)\n\n", c.OlderThanDays, len(staleAgent))
+	fmt.Printf("\n## Agent replied > %d business days, awaiting customer (%d)\n\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, client)
-	fmt.Printf("\n# Customer replied, awaiting agent (%d)\n\n", len(awaitingCustomer))
+	fmt.Printf("\n## Customer replied, awaiting agent (%d)\n\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, client)
 	return nil
 }
@@ -190,7 +192,6 @@ const (
 	selfAssignedHash = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`
 )
 
-// collectTickets paginates through the tickets list, collecting every page.
 // collectTickets paginates through the tickets list, collecting every page.
 func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.Client, defaultHash string) ([]fsapi.Ticket, error) {
 	// Build the base query once; only the page number changes per iteration.
