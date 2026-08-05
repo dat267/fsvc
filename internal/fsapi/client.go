@@ -78,28 +78,6 @@ func (c *Client) Put(ctx context.Context, path string, body []byte) ([]byte, err
 	return c.Do(ctx, http.MethodPut, path, nil, body)
 }
 
-// ticketsListParams decorates the tickets list endpoint with cache=true for
-// cached reads (observed in HAR). The API only accepts cache=true when paired
-// with a named filter view; query-hash-only scans are rejected with 403
-// access_denied. It only applies to the exact /api/_/tickets path;
-// sub-resources like conversations or single-ticket GETs reject it.
-func ticketsListParams(method, path string, query url.Values) url.Values {
-	if method != http.MethodGet || path != "tickets" {
-		return query
-	}
-	if query.Get("filter") == "" {
-		return query
-	}
-	q := url.Values{}
-	for k, vs := range query {
-		for _, v := range vs {
-			q.Add(k, v)
-		}
-	}
-	q.Set("cache", "true")
-	return q
-}
-
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body []byte) ([]byte, error) {
 	c.mu.RLock()
 	baseURL := c.baseURL
@@ -114,7 +92,6 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 		return nil, errors.New("no session cookie configured (run 'fsvc config set cookie <cookie>')")
 	}
 
-	query = ticketsListParams(method, path, query)
 	u := baseURL + "/api/_/" + strings.TrimPrefix(path, "/")
 	if len(query) > 0 {
 		u += "?" + query.Encode()

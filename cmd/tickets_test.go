@@ -198,7 +198,7 @@ func TestTicketsClassifyCmd(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(out, "Scanned 3 of 4 unresolved tickets (1 unassigned)") {
+	if !strings.Contains(out, "Scanned 4 unresolved tickets (3 self-assigned, 1 unassigned)") {
 		t.Errorf("expected scan summary:\n%s", out)
 	}
 	if !strings.Contains(out, "## Unassigned (1)") {
