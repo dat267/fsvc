@@ -119,45 +119,52 @@ type catTicket struct {
 	lastMsgAt time.Time
 }
 
+// toCatTickets wraps tickets with no last-message timestamp (the unassigned
+// list, which never had a conversation scan).
+func toCatTickets(tickets []fsapi.Ticket) []catTicket {
+	out := make([]catTicket, len(tickets))
+	for i, t := range tickets {
+		out[i] = catTicket{id: t.ID, ticket: t}
+	}
+	return out
+}
+
 const categoriesWorkers = 8
 
 func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) error {
 	threshold := biz.SubBusinessDays(nowInTZ(), c.OlderThanDays)
 
-	var allTickets, myTickets []fsapi.Ticket
+	// Two targeted queries instead of scanning every unresolved ticket:
+	//   1. unassigned unresolved tickets (responder_id = -1)
+	//   2. self-assigned unresolved tickets (responder_id = 0) — the only set
+	//      that needs the expensive per-ticket conversation scan.
+	var unassigned, myTickets []fsapi.Ticket
 
 	if c.QueryJSON != "" || c.Filter != 0 {
 		var err error
-		allTickets, err = c.collectTickets(ctx, client, "")
+		unassigned, err = c.collectTickets(ctx, client, "")
 		if err != nil {
 			return err
 		}
-		myTickets = allTickets
+		myTickets = unassigned
 	} else {
 		var wg sync.WaitGroup
-		var errAll, errMy error
+		var errUn, errMy error
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			allTickets, errAll = c.collectTickets(ctx, client, unresolvedHash)
+			unassigned, errUn = c.collectTickets(ctx, client, unassignedHash)
 		}()
 		go func() {
 			defer wg.Done()
 			myTickets, errMy = c.collectTickets(ctx, client, selfAssignedHash)
 		}()
 		wg.Wait()
-		if errAll != nil {
-			return errAll
+		if errUn != nil {
+			return errUn
 		}
 		if errMy != nil {
 			return errMy
-		}
-	}
-
-	var unassigned []catTicket
-	for _, t := range allTickets {
-		if t.ResponderID == nil || *t.ResponderID < 0 {
-			unassigned = append(unassigned, catTicket{id: t.ID, ticket: t})
 		}
 	}
 
@@ -167,7 +174,7 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) erro
 	}
 
 	sort.Slice(unassigned, func(i, j int) bool {
-		return unassigned[i].ticket.CreatedAt.Before(unassigned[j].ticket.CreatedAt)
+		return unassigned[i].CreatedAt.Before(unassigned[j].CreatedAt)
 	})
 	sort.Slice(staleAgent, func(i, j int) bool {
 		return staleAgent[i].lastMsgAt.Before(staleAgent[j].lastMsgAt)
@@ -176,10 +183,10 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) erro
 		return awaitingCustomer[i].lastMsgAt.Before(awaitingCustomer[j].lastMsgAt)
 	})
 
-	fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", len(allTickets), len(myTickets), len(unassigned))
+	fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", len(unassigned)+len(myTickets), len(myTickets), len(unassigned))
 
 	fmt.Printf("## Unassigned (%d)\n\n", len(unassigned))
-	printCatTable(unassigned, client)
+	printCatTable(toCatTickets(unassigned), client)
 	fmt.Printf("\n## Agent replied > %d business days, awaiting customer (%d)\n\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, client)
 	fmt.Printf("\n## Customer replied, awaiting agent (%d)\n\n", len(awaitingCustomer))
@@ -188,8 +195,8 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) erro
 }
 
 const (
-	unresolvedHash   = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]`
 	selfAssignedHash = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`
+	unassignedHash   = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["-1"],"type":"default"}]`
 )
 
 // collectTickets paginates through the tickets list, collecting every page.

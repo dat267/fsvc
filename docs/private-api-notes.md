@@ -20,14 +20,17 @@ Referer header):
 - `type` — `default`
 - `workspace_id` is NOT required in `query_hash` (the unresolved view omits it)
 
-`tickets classify` queries **all unresolved** tickets (no responder_id
-condition) so the unassigned list can be derived:
+`tickets classify` makes two targeted queries — **unassigned** unresolved
+tickets (`responder_id = -1`) and **self-assigned** unresolved tickets
+(`responder_id = 0`) — instead of paginating every unresolved ticket. The
+unassigned list is served directly by the query:
 ```json
-[{"condition":"status","operator":"is_in","value":["0"],"type":"default"}]
+[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},
+ {"condition":"responder_id","operator":"is_in","value":["-1"],"type":"default"}]
 ```
 
-The mutation commands (fill-*, sync-*) query **self-assigned** unresolved
-tickets:
+The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
+**self-assigned** unresolved tickets:
 ```json
 [{"condition":"status","operator":"is_in","value":["0"],"type":"default"},
  {"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]

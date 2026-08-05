@@ -166,10 +166,14 @@ func TestTicketsClassifyCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Query().Get("query_hash"), "responder_id") {
+		switch {
+		case strings.Contains(r.URL.Query().Get("query_hash"), `"value":["-1"]`):
+			// unassigned query: tickets with responder_id -1 (10103)
+			_, _ = fmt.Fprint(w, `{"tickets":[{"id":10103,"subject":"Unassigned printer ticket","priority":1,"status":2,"responder_id":-1,"created_at":"2026-08-01T00:00:00+04:00"}],"meta":{"has_next":false}}`)
+		case strings.Contains(r.URL.Query().Get("query_hash"), "responder_id"):
 			// self-assigned query: only assigned tickets
 			_, _ = fmt.Fprint(w, `{"tickets":[{"id":10100,"subject":"Request for Omar Saleh : Customer Support Ticket","priority":2,"status":2,"responder_id":3100,"created_at":"2026-07-29T16:42:48+04:00"},{"id":10101,"subject":"Printer not working","priority":1,"status":4,"responder_id":3101,"created_at":"2026-07-28T10:00:00+04:00"},{"id":10104,"subject":"Old ticket with no messages","priority":2,"status":2,"responder_id":3102,"created_at":"2026-07-25T00:00:00+04:00"}],"meta":{"has_next":false}}`)
-		} else {
+		default:
 			_, _ = w.Write(loadFixture(t, "tickets.json"))
 		}
 	})
