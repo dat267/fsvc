@@ -10,33 +10,33 @@ import (
 	"testing"
 )
 
-func TestCacheParam(t *testing.T) {
-	// Exact tickets list GET: cache=true added.
-	q := cacheParam(http.MethodGet, "tickets", url.Values{"per_page": {"30"}})
+func TestTicketsListParams(t *testing.T) {
+	// Exact tickets list GET: cache=true added, other params preserved.
+	q := ticketsListParams(http.MethodGet, "tickets", url.Values{"per_page": {"30"}})
 	if q.Get("cache") != "true" || q.Get("per_page") != "30" {
-		t.Errorf("expected cache=true added to tickets list GET, got %v", q)
+		t.Errorf("expected cache=true added on tickets list GET, got %v", q)
 	}
 
-	// Conversations and single-ticket GETs reject cache: untouched.
-	q = cacheParam(http.MethodGet, "tickets/5/conversations", url.Values{"x": {"y"}})
+	// Conversations and single-ticket GETs reject these: untouched.
+	q = ticketsListParams(http.MethodGet, "tickets/5/conversations", url.Values{"x": {"y"}})
 	if q.Get("cache") != "" {
-		t.Errorf("expected no cache on conversations GET, got %v", q)
+		t.Errorf("expected no decoration on conversations GET, got %v", q)
 	}
-	q = cacheParam(http.MethodGet, "tickets/5", url.Values{"x": {"y"}})
+	q = ticketsListParams(http.MethodGet, "tickets/5", url.Values{"x": {"y"}})
 	if q.Get("cache") != "" {
-		t.Errorf("expected no cache on single-ticket GET, got %v", q)
+		t.Errorf("expected no decoration on single-ticket GET, got %v", q)
 	}
 
 	// Non-tickets GET: untouched.
-	q = cacheParam(http.MethodGet, "users/1", url.Values{"x": {"y"}})
+	q = ticketsListParams(http.MethodGet, "users/1", url.Values{"x": {"y"}})
 	if q.Get("cache") != "" {
-		t.Errorf("expected no cache on users GET, got %v", q)
+		t.Errorf("expected no decoration on users GET, got %v", q)
 	}
 
 	// tickets PUT: untouched (writes must not request cached responses).
-	q = cacheParam(http.MethodPut, "tickets", url.Values{"x": {"y"}})
+	q = ticketsListParams(http.MethodPut, "tickets", url.Values{"x": {"y"}})
 	if q.Get("cache") != "" {
-		t.Errorf("expected no cache on tickets PUT, got %v", q)
+		t.Errorf("expected no decoration on tickets PUT, got %v", q)
 	}
 }
 
