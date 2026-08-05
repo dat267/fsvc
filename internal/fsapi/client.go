@@ -78,22 +78,6 @@ func (c *Client) Put(ctx context.Context, path string, body []byte) ([]byte, err
 	return c.Do(ctx, http.MethodPut, path, nil, body)
 }
 
-// autoCacheTrue adds cache=true to every GET request for the tickets resource,
-// which the API uses to serve cached list responses for faster reads.
-func autoCacheTrue(method, path string, query url.Values) url.Values {
-	if method != http.MethodGet || !strings.HasPrefix(path, "tickets") {
-		return query
-	}
-	q := url.Values{}
-	for k, vs := range query {
-		for _, v := range vs {
-			q.Add(k, v)
-		}
-	}
-	q.Set("cache", "true")
-	return q
-}
-
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body []byte) ([]byte, error) {
 	c.mu.RLock()
 	baseURL := c.baseURL
@@ -108,7 +92,6 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 		return nil, errors.New("no session cookie configured (run 'fsvc config set cookie <cookie>')")
 	}
 
-	query = autoCacheTrue(method, path, query)
 	u := baseURL + "/api/_/" + strings.TrimPrefix(path, "/")
 	if len(query) > 0 {
 		u += "?" + query.Encode()

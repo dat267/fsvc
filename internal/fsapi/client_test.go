@@ -10,38 +10,6 @@ import (
 	"testing"
 )
 
-func TestAutoCacheTrue(t *testing.T) {
-	// tickets GET: cache=true added.
-	q := autoCacheTrue(http.MethodGet, "tickets", url.Values{"per_page": {"30"}})
-	if q.Get("cache") != "true" || q.Get("per_page") != "30" {
-		t.Errorf("expected cache=true added to tickets GET, got %v", q)
-	}
-
-	// tickets conversations GET: cache=true added.
-	q = autoCacheTrue(http.MethodGet, "tickets/5/conversations", nil)
-	if q.Get("cache") != "true" {
-		t.Errorf("expected cache=true on conversations, got %v", q)
-	}
-
-	// Non-tickets GET: untouched.
-	q = autoCacheTrue(http.MethodGet, "users/1", url.Values{"x": {"y"}})
-	if q.Get("cache") != "" {
-		t.Errorf("expected no cache on users GET, got %v", q)
-	}
-
-	// tickets PUT: untouched (writes must not request cached responses).
-	q = autoCacheTrue(http.MethodPut, "tickets/5", url.Values{"x": {"y"}})
-	if q.Get("cache") != "" {
-		t.Errorf("expected no cache on tickets PUT, got %v", q)
-	}
-
-	// Explicit cache=false is overridden (auto cache=true wins).
-	q = autoCacheTrue(http.MethodGet, "tickets", url.Values{"cache": {"false"}})
-	if q.Get("cache") != "true" {
-		t.Errorf("expected explicit cache value overridden to true, got %v", q)
-	}
-}
-
 func TestClient_Get(t *testing.T) {
 	var gotMethod, gotPath, gotCookie, gotCSRF string
 	var gotQuery url.Values
