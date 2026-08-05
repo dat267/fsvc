@@ -11,30 +11,37 @@ import (
 )
 
 func TestTicketsListParams(t *testing.T) {
-	// Exact tickets list GET: cache=true added, other params preserved.
-	q := ticketsListParams(http.MethodGet, "tickets", url.Values{"per_page": {"30"}})
+	// Query-hash-only request (no filter view): untouched, since the API
+	// rejects cache=true without a filter view (403 access_denied).
+	q := ticketsListParams(http.MethodGet, "tickets", url.Values{"query_hash": {"[...]"}})
+	if q.Get("cache") != "" {
+		t.Errorf("expected no cache without filter view, got %v", q)
+	}
+
+	// With a named filter view: cache=true added, other params preserved.
+	q = ticketsListParams(http.MethodGet, "tickets", url.Values{"filter": {"overdue"}, "per_page": {"30"}})
 	if q.Get("cache") != "true" || q.Get("per_page") != "30" {
-		t.Errorf("expected cache=true added on tickets list GET, got %v", q)
+		t.Errorf("expected cache=true added with filter view, got %v", q)
 	}
 
 	// Conversations and single-ticket GETs reject these: untouched.
-	q = ticketsListParams(http.MethodGet, "tickets/5/conversations", url.Values{"x": {"y"}})
+	q = ticketsListParams(http.MethodGet, "tickets/5/conversations", url.Values{"filter": {"overdue"}})
 	if q.Get("cache") != "" {
 		t.Errorf("expected no decoration on conversations GET, got %v", q)
 	}
-	q = ticketsListParams(http.MethodGet, "tickets/5", url.Values{"x": {"y"}})
+	q = ticketsListParams(http.MethodGet, "tickets/5", url.Values{"filter": {"overdue"}})
 	if q.Get("cache") != "" {
 		t.Errorf("expected no decoration on single-ticket GET, got %v", q)
 	}
 
 	// Non-tickets GET: untouched.
-	q = ticketsListParams(http.MethodGet, "users/1", url.Values{"x": {"y"}})
+	q = ticketsListParams(http.MethodGet, "users/1", url.Values{"filter": {"overdue"}})
 	if q.Get("cache") != "" {
 		t.Errorf("expected no decoration on users GET, got %v", q)
 	}
 
 	// tickets PUT: untouched (writes must not request cached responses).
-	q = ticketsListParams(http.MethodPut, "tickets", url.Values{"x": {"y"}})
+	q = ticketsListParams(http.MethodPut, "tickets", url.Values{"filter": {"overdue"}})
 	if q.Get("cache") != "" {
 		t.Errorf("expected no decoration on tickets PUT, got %v", q)
 	}

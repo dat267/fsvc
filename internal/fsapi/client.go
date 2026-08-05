@@ -79,10 +79,15 @@ func (c *Client) Put(ctx context.Context, path string, body []byte) ([]byte, err
 }
 
 // ticketsListParams decorates the tickets list endpoint with cache=true for
-// cached reads (observed in HAR). It only applies to the exact /api/_/tickets
-// path; sub-resources like conversations or single-ticket GETs reject it.
+// cached reads (observed in HAR). The API only accepts cache=true when paired
+// with a named filter view; query-hash-only scans are rejected with 403
+// access_denied. It only applies to the exact /api/_/tickets path;
+// sub-resources like conversations or single-ticket GETs reject it.
 func ticketsListParams(method, path string, query url.Values) url.Values {
 	if method != http.MethodGet || path != "tickets" {
+		return query
+	}
+	if query.Get("filter") == "" {
 		return query
 	}
 	q := url.Values{}
