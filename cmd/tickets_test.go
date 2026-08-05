@@ -198,7 +198,7 @@ func TestTicketsClassifyCmd(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(out, "Scanned 4 unresolved tickets (3 self-assigned, 1 unassigned)") {
+	if !strings.Contains(out, "Scanned 3 of 4 unresolved tickets (1 unassigned)") {
 		t.Errorf("expected scan summary:\n%s", out)
 	}
 	if !strings.Contains(out, "## Unassigned (1)") {
@@ -251,6 +251,35 @@ func TestTicketsClassifyCmd_QueryJSON(t *testing.T) {
 	}
 	if gotQuery.Get("per_page") != "100" {
 		t.Errorf("expected per_page=100, got %q", gotQuery.Get("per_page"))
+	}
+}
+
+func TestTicketsClassifyCmd_CacheParam(t *testing.T) {
+	var mu sync.Mutex
+	var gotQuery url.Values
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotQuery = r.URL.Query()
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(loadFixture(t, "tickets.json"))
+	})
+	mux.HandleFunc("/api/_/tickets/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"conversations":[],"meta":{"count":0}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := (&TicketsClassifyCmd{Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if gotQuery.Get("cache") != "true" {
+		t.Errorf("expected cache=true on tickets list, got %q", gotQuery.Get("cache"))
 	}
 }
 

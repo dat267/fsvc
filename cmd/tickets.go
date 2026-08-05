@@ -176,7 +176,7 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) erro
 		return awaitingCustomer[i].lastMsgAt.Before(awaitingCustomer[j].lastMsgAt)
 	})
 
-	fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", len(allTickets), len(myTickets), len(unassigned))
+	fmt.Printf("Scanned %d of %d unresolved tickets (%d unassigned)\n\n", len(myTickets), len(allTickets), len(unassigned))
 
 	fmt.Printf("## Unassigned (%d)\n\n", len(unassigned))
 	printCatTable(unassigned, client)
