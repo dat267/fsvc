@@ -11,9 +11,6 @@ import (
 	"time"
 
 	"github.com/alecthomas/kong"
-
-	"fsvc/internal/biz"
-	"fsvc/internal/fsapi"
 )
 
 // appName is used for config path resolution. SetAppName overrides it.
@@ -27,7 +24,7 @@ var now = time.Now
 
 // nowInTZ returns the current time in the configured timezone (or local if unset).
 func nowInTZ() time.Time {
-	return biz.NowInTZAt(tz, now())
+	return NowInTZAt(tz, now())
 }
 
 const configFileFlagName = "config-file"
@@ -73,7 +70,7 @@ func Execute(ctx context.Context) {
 	activeConfig := app.CfgPath()
 
 	cli := &CLI{}
-	client := fsapi.New(fsapi.ClientConfig{})
+	client := New(ClientConfig{})
 	options := []kong.Option{
 		kong.Name(appName),
 		kong.Description("Freshservice private-API CLI"),

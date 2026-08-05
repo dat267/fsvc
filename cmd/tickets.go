@@ -12,9 +12,6 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
-
-	"fsvc/internal/biz"
-	"fsvc/internal/fsapi"
 )
 
 type TicketsCmdGroup struct {
@@ -48,7 +45,7 @@ var ticketsListColumns = []Column{
 	{Header: "Created", Path: "created_at"},
 }
 
-func (c *TicketsListCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketsListCmd) Run(ctx context.Context, client *Client) error {
 	q := url.Values{}
 	q.Set("order_by", c.OrderBy)
 	q.Set("order_type", c.OrderType)
@@ -84,7 +81,7 @@ var ticketsConvColumns = []Column{
 	{Header: "Body", Path: "body_text"},
 }
 
-func (c *TicketsConvCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketsConvCmd) Run(ctx context.Context, client *Client) error {
 	q := url.Values{}
 	q.Set("per_page", strconv.Itoa(c.PerPage))
 	if c.Include != "" {
@@ -115,13 +112,13 @@ var classifyColumns = []Column{
 
 type catTicket struct {
 	id        int64
-	ticket    fsapi.Ticket
+	ticket    Ticket
 	lastMsgAt time.Time
 }
 
 // toCatTickets wraps tickets with no last-message timestamp (the unassigned
 // list, which never had a conversation scan).
-func toCatTickets(tickets []fsapi.Ticket) []catTicket {
+func toCatTickets(tickets []Ticket) []catTicket {
 	out := make([]catTicket, len(tickets))
 	for i, t := range tickets {
 		out[i] = catTicket{id: t.ID, ticket: t}
@@ -131,14 +128,14 @@ func toCatTickets(tickets []fsapi.Ticket) []catTicket {
 
 const categoriesWorkers = 8
 
-func (c *TicketsClassifyCmd) Run(ctx context.Context, client *fsapi.Client) error {
-	threshold := biz.SubBusinessDays(nowInTZ(), c.OlderThanDays)
+func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
+	threshold := SubBusinessDays(nowInTZ(), c.OlderThanDays)
 
 	// Two targeted queries instead of scanning every unresolved ticket:
 	//   1. unassigned unresolved tickets (responder_id = -1)
 	//   2. self-assigned unresolved tickets (responder_id = 0) — the only set
 	//      that needs the expensive per-ticket conversation scan.
-	var unassigned, myTickets []fsapi.Ticket
+	var unassigned, myTickets []Ticket
 
 	if c.QueryJSON != "" || c.Filter != 0 {
 		var err error
@@ -200,7 +197,7 @@ const (
 )
 
 // collectTickets paginates through the tickets list, collecting every page.
-func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.Client, defaultHash string) ([]fsapi.Ticket, error) {
+func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *Client, defaultHash string) ([]Ticket, error) {
 	// Build the base query once; only the page number changes per iteration.
 	q := url.Values{}
 	q.Set("per_page", strconv.Itoa(c.PerPage))
@@ -232,7 +229,7 @@ func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *fsapi.C
 // classifyTickets assigns each ticket to a category using a bounded worker
 // pool. The conversation fetch per ticket is the slow part and runs
 // concurrently; results are collected under a mutex.
-func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []fsapi.Ticket, threshold time.Time) (staleAgent, awaitingCustomer []catTicket, _ error) {
+func classifyTickets(ctx context.Context, client *Client, tickets []Ticket, threshold time.Time) (staleAgent, awaitingCustomer []catTicket, _ error) {
 	workers := categoriesWorkers
 	if len(tickets) < workers {
 		workers = len(tickets)
@@ -244,7 +241,7 @@ func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []fsapi.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	work := make(chan fsapi.Ticket, len(tickets))
+	work := make(chan Ticket, len(tickets))
 	for _, t := range tickets {
 		work <- t
 	}
@@ -275,9 +272,9 @@ func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []fsapi.
 				}
 				mu.Lock()
 				switch kind {
-				case biz.CategoryStaleAgent:
+				case CategoryStaleAgent:
 					staleAgent = append(staleAgent, entry)
-				case biz.CategoryCustomer:
+				case CategoryCustomer:
 					awaitingCustomer = append(awaitingCustomer, entry)
 				}
 				mu.Unlock()
@@ -294,12 +291,12 @@ func classifyTickets(ctx context.Context, client *fsapi.Client, tickets []fsapi.
 }
 
 // classifyTicket decides which category a single ticket belongs to.
-func classifyTicket(ctx context.Context, client *fsapi.Client, t fsapi.Ticket, threshold time.Time) (catTicket, biz.Category, error) {
+func classifyTicket(ctx context.Context, client *Client, t Ticket, threshold time.Time) (catTicket, Category, error) {
 	entry := catTicket{id: t.ID, ticket: t}
 
 	latest, err := client.LatestConversation(ctx, t.ID)
 	if err != nil {
-		return entry, biz.CategoryNone, fmt.Errorf("ticket %d: %w", t.ID, err)
+		return entry, CategoryNone, fmt.Errorf("ticket %d: %w", t.ID, err)
 	}
 
 	lastMsg := time.Time{}
@@ -309,8 +306,8 @@ func classifyTicket(ctx context.Context, client *fsapi.Client, t fsapi.Ticket, t
 		incoming = latest.Incoming
 	}
 
-	cat := biz.Classify(t.ResponderID, lastMsg, incoming, t.CreatedAt, threshold)
-	if cat == biz.CategoryCustomer || cat == biz.CategoryStaleAgent {
+	cat := Classify(t.ResponderID, lastMsg, incoming, t.CreatedAt, threshold)
+	if cat == CategoryCustomer || cat == CategoryStaleAgent {
 		entry.lastMsgAt = lastMsg
 		if lastMsg.IsZero() {
 			entry.lastMsgAt = t.CreatedAt
@@ -319,7 +316,7 @@ func classifyTicket(ctx context.Context, client *fsapi.Client, t fsapi.Ticket, t
 	return entry, cat, nil
 }
 
-func printCatTable(entries []catTicket, client *fsapi.Client) {
+func printCatTable(entries []catTicket, client *Client) {
 	if len(entries) == 0 {
 		fmt.Println("(none)")
 		return
@@ -333,7 +330,7 @@ func printCatTable(entries []catTicket, client *fsapi.Client) {
 		rows[i] = map[string]any{
 			"subject": truncate(e.ticket.Subject, 40),
 			"link":    fmt.Sprintf("%s/a/tickets/%d", client.BaseURL(), e.id),
-			"days":    fmt.Sprintf("%.1f", biz.BusinessDaysBetween(ref, nowInTZ())),
+			"days":    fmt.Sprintf("%.1f", BusinessDaysBetween(ref, nowInTZ())),
 		}
 	}
 	fmt.Print(RenderTable(classifyColumns, rows))
@@ -372,7 +369,7 @@ var ticketsUpdateColumns = []Column{
 	{Header: "Updated", Path: "updated_at"},
 }
 
-func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketsUpdateCmd) Run(ctx context.Context, client *Client) error {
 	var payload []byte
 	var err error
 
@@ -383,7 +380,7 @@ func (c *TicketsUpdateCmd) Run(ctx context.Context, client *fsapi.Client) error 
 		}
 		payload = []byte(c.Body)
 	case len(c.Pairs) > 0:
-		payload, err = fsapi.BuildBody(c.Pairs)
+		payload, err = BuildBody(c.Pairs)
 		if err != nil {
 			return err
 		}
@@ -422,10 +419,10 @@ type TicketsFillStartDatesCmd struct {
 	PerPage int  `help:"Tickets per page" default:"100"`
 }
 
-func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *Client) error {
 	var changes []pendingChange
 
-	if err := forEachMyTicket(ctx, client, c.PerPage, func(t fsapi.Ticket) error {
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
 		if t.HasPlannedStartDate() {
 			return nil
 		}
@@ -456,12 +453,12 @@ type TicketsFillEndDatesCmd struct {
 	PerPage int  `help:"Tickets per page" default:"100"`
 }
 
-func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *Client) error {
 	base := nowInTZ()
-	target := biz.AddBusinessDays(base, c.Days).Format(time.RFC3339)
+	target := AddBusinessDays(base, c.Days).Format(time.RFC3339)
 
 	var changes []pendingChange
-	if err := forEachMyTicket(ctx, client, c.PerPage, func(t fsapi.Ticket) error {
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
 		cur := ""
 		if t.PlannedEndDate != nil {
 			cur = t.PlannedEndDate.Format(time.RFC3339)
@@ -495,11 +492,11 @@ type TicketsSyncUrgencyImpactCmd struct {
 	PerPage int  `help:"Tickets per page" default:"100"`
 }
 
-func (c *TicketsSyncUrgencyImpactCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketsSyncUrgencyImpactCmd) Run(ctx context.Context, client *Client) error {
 	var changes []pendingChange
 
-	if err := forEachMyTicket(ctx, client, c.PerPage, func(t fsapi.Ticket) error {
-		targetU, targetI, ok := biz.MinUrgencyImpactForPriority(t.Priority)
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
+		targetU, targetI, ok := MinUrgencyImpactForPriority(t.Priority)
 		if !ok {
 			return nil
 		}
@@ -529,11 +526,11 @@ type TicketsSyncPriorityCmd struct {
 	PerPage int  `help:"Tickets per page" default:"100"`
 }
 
-func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *Client) error {
 	var changes []pendingChange
 
-	if err := forEachMyTicket(ctx, client, c.PerPage, func(t fsapi.Ticket) error {
-		target := biz.PriorityFor(t.Urgency, t.Impact)
+	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
+		target := PriorityFor(t.Urgency, t.Impact)
 		if target == 0 || target == t.Priority {
 			return nil
 		}
@@ -557,7 +554,7 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *fsapi.Client) 
 
 // forEachMyTicket paginates through self-assigned unresolved tickets and calls
 // fn sequentially for each, using the list-level ticket data directly.
-func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn func(t fsapi.Ticket) error) error {
+func forEachMyTicket(ctx context.Context, client *Client, perPage int, fn func(t Ticket) error) error {
 	list, err := collectMyTickets(ctx, client, perPage)
 	if err != nil {
 		return err
@@ -573,7 +570,7 @@ func forEachMyTicket(ctx context.Context, client *fsapi.Client, perPage int, fn 
 
 // collectMyTickets paginates the self-assigned unresolved ticket list,
 // returning each ticket's list-level data.
-func collectMyTickets(ctx context.Context, client *fsapi.Client, perPage int) ([]fsapi.Ticket, error) {
+func collectMyTickets(ctx context.Context, client *Client, perPage int) ([]Ticket, error) {
 	q := url.Values{"per_page": {strconv.Itoa(perPage)},
 		"order_by": {"created_at"}, "order_type": {"asc"},
 		"query_hash": {`[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`}}
@@ -582,8 +579,8 @@ func collectMyTickets(ctx context.Context, client *fsapi.Client, perPage int) ([
 
 // paginateTickets walks every page of a tickets query, appending results until
 // the API reports no further pages. baseQuery may omit the page parameter.
-func paginateTickets(ctx context.Context, client *fsapi.Client, baseQuery url.Values, startPage int) ([]fsapi.Ticket, error) {
-	var tickets []fsapi.Ticket
+func paginateTickets(ctx context.Context, client *Client, baseQuery url.Values, startPage int) ([]Ticket, error) {
+	var tickets []Ticket
 	page := startPage
 	q := make(url.Values, len(baseQuery)+1)
 	for k, vs := range baseQuery {
@@ -607,7 +604,7 @@ func paginateTickets(ctx context.Context, client *fsapi.Client, baseQuery url.Va
 	return tickets, nil
 }
 
-func previewAndApply(ctx context.Context, client *fsapi.Client, changes []pendingChange, yes bool) error {
+func previewAndApply(ctx context.Context, client *Client, changes []pendingChange, yes bool) error {
 	if len(changes) == 0 {
 		fmt.Println("No changes needed.")
 		return nil

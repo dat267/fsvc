@@ -5,13 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-
-	"fsvc/internal/fsapi"
 )
 
 type SessionCmd struct{}
 
-func (c *SessionCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *SessionCmd) Run(ctx context.Context, client *Client) error {
 	data, err := client.Get(ctx, "tickets", url.Values{"per_page": {"1"}})
 	if err != nil {
 		return err

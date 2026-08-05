@@ -1,8 +1,7 @@
-package fsapi
+package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 )
@@ -37,14 +36,4 @@ func (c *Client) LatestConversation(ctx context.Context, ticketID int64) (*Conve
 		return nil, nil
 	}
 	return &convs[0], nil
-}
-
-// UpdateTicket sends a PUT to update ticket fields.
-func (c *Client) UpdateTicket(ctx context.Context, ticketID int64, body any) error {
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	_, err = c.Put(ctx, fmt.Sprintf("tickets/%d", ticketID), payload)
-	return err
 }

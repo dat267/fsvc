@@ -1,4 +1,4 @@
-package fsapi
+package cmd
 
 import (
 	"context"

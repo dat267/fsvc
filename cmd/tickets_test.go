@@ -15,8 +15,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"fsvc/internal/fsapi"
 )
 
 func loadFixture(t *testing.T, name string) []byte {
@@ -42,8 +40,8 @@ func serveFixture(t *testing.T, name string, check func(*http.Request)) *httptes
 	return srv
 }
 
-func newTestClient(serverURL string) *fsapi.Client {
-	return fsapi.New(fsapi.ClientConfig{BaseURL: serverURL, ItildeskSession: "abc"})
+func newTestClient(serverURL string) *Client {
+	return New(ClientConfig{BaseURL: serverURL, ItildeskSession: "abc"})
 }
 
 func TestTicketsListCmd_Table(t *testing.T) {
@@ -477,7 +475,7 @@ func TestTicketsUpdateCmd_Pairs(t *testing.T) {
 			Pairs: []string{"priority=1", "group_id=4001", "custom_fields.type_of_ticket_received=Duplicate"},
 		}
 		client := newTestClient(srv.URL)
-		client.SetCSRF("tok123")
+		client.csrf = "tok123"
 		if err := cmd.Run(context.Background(), client); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

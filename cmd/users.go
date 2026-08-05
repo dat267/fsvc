@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-
-	"fsvc/internal/fsapi"
 )
 
 type UsersCmdGroup struct {
@@ -25,7 +23,7 @@ var userColumns = []Column{
 	{Header: "Active", Path: "active"},
 }
 
-func (c *UsersShowCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *UsersShowCmd) Run(ctx context.Context, client *Client) error {
 	path := fmt.Sprintf("users/%d", c.ID)
 	data, err := client.Get(ctx, path, nil)
 	if err != nil {

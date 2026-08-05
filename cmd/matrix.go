@@ -1,4 +1,4 @@
-package biz
+package cmd
 
 var priorityMatrix = [4][4]int{
 	1: {1: 1, 2: 1, 3: 2},

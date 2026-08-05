@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-
-	"fsvc/internal/fsapi"
 )
 
 type TicketFiltersCmdGroup struct {
@@ -27,7 +25,7 @@ var ticketFilterColumns = []Column{
 	{Header: "Per Page", Path: "per_page"},
 }
 
-func (c *TicketFiltersShowCmd) Run(ctx context.Context, client *fsapi.Client) error {
+func (c *TicketFiltersShowCmd) Run(ctx context.Context, client *Client) error {
 	path := fmt.Sprintf("ticket_filters/%d", c.ID)
 	data, err := client.Get(ctx, path, nil)
 	if err != nil {
