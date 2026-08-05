@@ -8,18 +8,18 @@ import (
 
 func TestClientConfigFromCLI(t *testing.T) {
 	cli := &CLI{
-		Subdomain: "acme",
-		Cookie:    "helpdesk_node_session=abc",
-		CSRFToken: "tok",
-		BaseURL:   "http://127.0.0.1:9999",
+		Subdomain:       "acme",
+		ItildeskSession: "abc123",
+		CSRFToken:       "tok",
+		BaseURL:         "http://127.0.0.1:9999",
 	}
 
 	cfg := clientConfigFromCLI(cli)
 	want := fsapi.ClientConfig{
-		Subdomain: "acme",
-		Cookie:    "helpdesk_node_session=abc",
-		CSRF:      "tok",
-		BaseURL:   "http://127.0.0.1:9999",
+		Subdomain:       "acme",
+		ItildeskSession: "abc123",
+		CSRF:            "tok",
+		BaseURL:         "http://127.0.0.1:9999",
 	}
 	if cfg != want {
 		t.Errorf("expected %+v, got %+v", want, cfg)

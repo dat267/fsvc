@@ -50,7 +50,7 @@ func TestClient_ListTicketsTyped(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "x=1"})
+	c := New(ClientConfig{BaseURL: srv.URL, ItildeskSession: "x"})
 	tickets, hasNext, err := c.ListTickets(context.Background(), url.Values{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -70,7 +70,7 @@ func TestClient_LatestConversation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "x=1"})
+	c := New(ClientConfig{BaseURL: srv.URL, ItildeskSession: "x"})
 	conv, err := c.LatestConversation(context.Background(), 7)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -87,7 +87,7 @@ func TestClient_LatestConversationEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "x=1"})
+	c := New(ClientConfig{BaseURL: srv.URL, ItildeskSession: "x"})
 	conv, err := c.LatestConversation(context.Background(), 7)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

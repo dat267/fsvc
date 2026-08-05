@@ -9,13 +9,13 @@ following the scaffold pattern from [min](https://github.com/dat267/min).
 ```bash
 go install github.com/dat267/fsvc@latest
 
-# Grab your session cookie from browser DevTools
+# Grab your _itildesk_session cookie from browser DevTools
 #   F12 → Application → Cookies → Freshservice domain
-#   Copy the full Cookie header value (all cookies, semicolon-separated)
+#   Copy the value of the _itildesk_session cookie
 
 # Configure
 fsvc config set subdomain acme
-fsvc config set cookie "helpdesk_node_session=abc123; _itildesk_session=xyz; ..."
+fsvc config set itildesk-session "<your _itildesk_session value>"
 
 # Verify
 fsvc session
@@ -45,8 +45,8 @@ fsvc tickets sync-priority -y                          # sync priority from urge
 fsvc tickets sync-urgency-impact -y                    # set minimal urgency+impact for each priority
 ```
 
-- Config lives at `~/.config/fsvc/fsvc.json` (or set `--subdomain`/`--cookie` flags per invocation)
-- Cookie rotates automatically — the CLI captures `Set-Cookie` from each response
+- Config lives at `~/.config/fsvc/fsvc.json` (or set `--subdomain`/`--itildesk-session` flags per invocation)
+- The session rotates automatically — the CLI captures the rotated `_itildesk_session` from `Set-Cookie` on each response
 - Use `--time-zone Europe/London` for accurate business-day math on `classify` and `fill-end-dates`
 - Point at a mock server with `--base-url http://127.0.0.1:PORT` for safe testing
 
@@ -56,13 +56,13 @@ JSON file, same resolution as min: `$FSVC_CONFIG_FILE` env → `./fsvc.json` →
 `~/.config/fsvc/fsvc.json`. Or set flags / env vars directly:
 
 ```bash
-fsvc --subdomain acme --cookie "..." session
+fsvc --subdomain acme --itildesk-session "..." session
 ```
 
 | Key | Flag | Env | Purpose |
 | --- | --- | --- | --- |
 | `subdomain` | `--subdomain` | `FSVC_SUBDOMAIN` | e.g. `acme` |
-| `cookie` | `--cookie` | `FSVC_COOKIE` | raw session cookie string |
+| `itildesk-session` | `--itildesk-session` | `FSVC_ITILDESK_SESSION` | `_itildesk_session` cookie value |
 | `csrf-token` | `--csrf-token` | `FSVC_CSRF_TOKEN` | CSRF token for write operations |
 | `base-url` | `--base-url` | `FSVC_BASE_URL` | override base URL (default `https://<subdomain>.freshservice.com`) |
 | `time-zone` | `--time-zone` | `FSVC_TZ` | timezone for business-day calculations (e.g. `Europe/London`) |

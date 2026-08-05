@@ -4,9 +4,9 @@ import "fsvc/internal/fsapi"
 
 func clientConfigFromCLI(cli *CLI) fsapi.ClientConfig {
 	return fsapi.ClientConfig{
-		Subdomain: cli.Subdomain,
-		Cookie:    cli.Cookie,
-		CSRF:      cli.CSRFToken,
-		BaseURL:   cli.BaseURL,
+		Subdomain:       cli.Subdomain,
+		ItildeskSession: cli.ItildeskSession,
+		CSRF:            cli.CSRFToken,
+		BaseURL:         cli.BaseURL,
 	}
 }

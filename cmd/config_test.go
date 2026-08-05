@@ -59,7 +59,7 @@ func TestConfigSetCmd_Types(t *testing.T) {
 		expected any
 	}{
 		{"subdomain", "acme", "acme"},
-		{"cookie", "helpdesk_node_session=abc", "helpdesk_node_session=abc"},
+		{"itildesk-session", "abc", "abc"},
 		{"csrf-token", "tok", "tok"},
 		{"enabled", "true", true},
 		{"count", "42", float64(42)},

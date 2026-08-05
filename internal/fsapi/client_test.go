@@ -25,7 +25,7 @@ func TestClient_Get(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "helpdesk_node_session=abc", CSRF: "tok"})
+	c := New(ClientConfig{BaseURL: srv.URL, ItildeskSession: "abc", CSRF: "tok"})
 	data, err := c.Get(context.Background(), "tickets", url.Values{"per_page": {"1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -43,8 +43,8 @@ func TestClient_Get(t *testing.T) {
 	if gotQuery.Get("per_page") != "1" {
 		t.Errorf("expected per_page=1, got %v", gotQuery)
 	}
-	if gotCookie != "helpdesk_node_session=abc" {
-		t.Errorf("expected verbatim cookie, got %q", gotCookie)
+	if gotCookie != "_itildesk_session=abc" {
+		t.Errorf("expected _itildesk_session cookie, got %q", gotCookie)
 	}
 	if gotCSRF != "tok" {
 		t.Errorf("expected X-CSRF-Token tok, got %q", gotCSRF)
@@ -52,27 +52,27 @@ func TestClient_Get(t *testing.T) {
 }
 
 func TestClient_SubdomainBaseURL(t *testing.T) {
-	c := New(ClientConfig{Subdomain: "acme", Cookie: "x=1"})
+	c := New(ClientConfig{Subdomain: "acme", ItildeskSession: "x"})
 	if c.baseURL != "https://acme.freshservice.com" {
 		t.Errorf("expected https://acme.freshservice.com, got %s", c.baseURL)
 	}
 }
 
 func TestClient_Update(t *testing.T) {
-	c := New(ClientConfig{Subdomain: "acme", Cookie: "helpdesk_node_session=abc", CSRF: "tok"})
+	c := New(ClientConfig{Subdomain: "acme", ItildeskSession: "abc", CSRF: "tok"})
 
-	c.Update(ClientConfig{Subdomain: "beta", Cookie: "new=1", CSRF: "newtok"})
+	c.Update(ClientConfig{Subdomain: "beta", ItildeskSession: "new", CSRF: "newtok"})
 	if c.baseURL != "https://beta.freshservice.com" {
 		t.Errorf("expected beta base URL, got %s", c.baseURL)
 	}
-	if c.cookie != "new=1" || c.csrf != "newtok" {
-		t.Errorf("expected updated credentials, got cookie=%q csrf=%q", c.cookie, c.csrf)
+	if c.itildeskSession != "new" || c.csrf != "newtok" {
+		t.Errorf("expected updated credentials, got session=%q csrf=%q", c.itildeskSession, c.csrf)
 	}
 
-	// Empty cookie/CSRF clear the previous credentials.
+	// Empty session/CSRF clear the previous credentials.
 	c.Update(ClientConfig{Subdomain: "beta"})
-	if c.cookie != "" || c.csrf != "" {
-		t.Errorf("expected cleared credentials, got cookie=%q csrf=%q", c.cookie, c.csrf)
+	if c.itildeskSession != "" || c.csrf != "" {
+		t.Errorf("expected cleared credentials, got session=%q csrf=%q", c.itildeskSession, c.csrf)
 	}
 
 	// Explicit BaseURL wins over Subdomain.
@@ -91,8 +91,8 @@ func TestClient_MissingConfig(t *testing.T) {
 
 	c = New(ClientConfig{BaseURL: "http://x"})
 	_, err = c.Get(context.Background(), "tickets", nil)
-	if err == nil || !strings.Contains(err.Error(), "no session cookie") {
-		t.Errorf("expected cookie error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no session configured") {
+		t.Errorf("expected session error, got %v", err)
 	}
 }
 
@@ -103,9 +103,9 @@ func TestClient_Unauthorized(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "x=1"})
+	c := New(ClientConfig{BaseURL: srv.URL, ItildeskSession: "x"})
 	_, err := c.Get(context.Background(), "tickets", nil)
-	if err == nil || !strings.Contains(err.Error(), "session cookie invalid or expired") {
+	if err == nil || !strings.Contains(err.Error(), "session invalid or expired") {
 		t.Errorf("expected session hint in error, got %v", err)
 	}
 }
@@ -117,7 +117,7 @@ func TestClient_Non2xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "x=1"})
+	c := New(ClientConfig{BaseURL: srv.URL, ItildeskSession: "x"})
 	_, err := c.Get(context.Background(), "tickets/1", nil)
 	if err == nil || !strings.Contains(err.Error(), "HTTP 404") {
 		t.Errorf("expected HTTP 404 in error, got %v", err)
@@ -140,7 +140,7 @@ func TestClient_Put(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "helpdesk_node_session=abc", CSRF: "tok"})
+	c := New(ClientConfig{BaseURL: srv.URL, ItildeskSession: "abc", CSRF: "tok"})
 	data, err := c.Put(context.Background(), "tickets/10100", []byte(`{"priority":1}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -161,8 +161,8 @@ func TestClient_Put(t *testing.T) {
 	if string(gotBody) != `{"priority":1}` {
 		t.Errorf("expected body, got %q", gotBody)
 	}
-	if gotCookie != "helpdesk_node_session=abc" {
-		t.Errorf("expected verbatim cookie, got %q", gotCookie)
+	if gotCookie != "_itildesk_session=abc" {
+		t.Errorf("expected _itildesk_session cookie, got %q", gotCookie)
 	}
 }
 
@@ -181,7 +181,7 @@ func TestClient_CookieJarRotation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(ClientConfig{BaseURL: srv.URL, Cookie: "helpdesk_node_session=abc"})
+	c := New(ClientConfig{BaseURL: srv.URL, ItildeskSession: "abc"})
 	if _, err := c.Get(context.Background(), "tickets", nil); err != nil {
 		t.Fatalf("first request failed: %v", err)
 	}

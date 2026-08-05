@@ -82,7 +82,7 @@ func TestResolveConfigFileFlag(t *testing.T) {
 func TestJSONResolver(t *testing.T) {
 	jsonConfig := `{
 		"subdomain": "acme",
-		"cookie": "helpdesk_node_session=abc",
+		"itildesk-session": "abc",
 		"csrf-token": "tok",
 		"nested": {
 			"base-url": "http://127.0.0.1:9999"
@@ -99,7 +99,7 @@ func TestJSONResolver(t *testing.T) {
 		expected any
 	}{
 		{"subdomain", "acme"},
-		{"cookie", "helpdesk_node_session=abc"},
+		{"itildesk-session", "abc"},
 		{"csrf-token", "tok"},
 		{"base-url", nil},
 		{"nested-base-url", "http://127.0.0.1:9999"},

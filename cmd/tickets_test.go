@@ -43,7 +43,7 @@ func serveFixture(t *testing.T, name string, check func(*http.Request)) *httptes
 }
 
 func newTestClient(serverURL string) *fsapi.Client {
-	return fsapi.New(fsapi.ClientConfig{BaseURL: serverURL, Cookie: "helpdesk_node_session=abc"})
+	return fsapi.New(fsapi.ClientConfig{BaseURL: serverURL, ItildeskSession: "abc"})
 }
 
 func TestTicketsListCmd_Table(t *testing.T) {

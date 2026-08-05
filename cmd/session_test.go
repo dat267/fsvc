@@ -23,7 +23,7 @@ func TestSessionCmd_OK(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := fsapi.New(fsapi.ClientConfig{BaseURL: srv.URL, Cookie: "x=1"})
+	client := fsapi.New(fsapi.ClientConfig{BaseURL: srv.URL, ItildeskSession: "x=1"})
 	out := captureStdout(t, func() {
 		if err := (&SessionCmd{}).Run(context.Background(), client); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -42,9 +42,9 @@ func TestSessionCmd_Unauthorized(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := fsapi.New(fsapi.ClientConfig{BaseURL: srv.URL, Cookie: "x=1"})
+	client := fsapi.New(fsapi.ClientConfig{BaseURL: srv.URL, ItildeskSession: "x=1"})
 	err := (&SessionCmd{}).Run(context.Background(), client)
-	if err == nil || !strings.Contains(err.Error(), "session cookie invalid or expired") {
+	if err == nil || !strings.Contains(err.Error(), "session invalid or expired") {
 		t.Errorf("expected session error, got %v", err)
 	}
 }

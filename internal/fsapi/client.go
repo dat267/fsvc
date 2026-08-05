@@ -15,18 +15,23 @@ import (
 )
 
 type ClientConfig struct {
-	Subdomain string
-	Cookie    string
-	CSRF      string
-	BaseURL   string
+	Subdomain       string
+	ItildeskSession string
+	CSRF            string
+	BaseURL         string
 }
 
+// itildeskSessionCookie is the cookie name whose value authenticates the
+// private API (the other session cookies, e.g. helpdesk_node_session, are not
+// required).
+const itildeskSessionCookie = "_itildesk_session"
+
 type Client struct {
-	mu      sync.RWMutex
-	baseURL string
-	cookie  string
-	csrf    string
-	http    *http.Client
+	mu              sync.RWMutex
+	baseURL         string
+	itildeskSession string
+	csrf            string
+	http            *http.Client
 }
 
 func New(cfg ClientConfig) *Client {
@@ -36,15 +41,15 @@ func New(cfg ClientConfig) *Client {
 		baseURL = "https://" + cfg.Subdomain + ".freshservice.com"
 	}
 	return &Client{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		cookie:  cfg.Cookie,
-		csrf:    cfg.CSRF,
-		http:    &http.Client{Timeout: 30 * time.Second, Jar: jar},
+		baseURL:         strings.TrimSuffix(baseURL, "/"),
+		itildeskSession: cfg.ItildeskSession,
+		csrf:            cfg.CSRF,
+		http:            &http.Client{Timeout: 30 * time.Second, Jar: jar},
 	}
 }
 
 // Update reconfigures the connection credentials. Called after Kong resolves
-// flags/env/config-file values, before commands run. Empty cookie/CSRF values
+// flags/env/config-file values, before commands run. Empty session/CSRF values
 // clear the previous credentials.
 func (c *Client) Update(cfg ClientConfig) {
 	c.mu.Lock()
@@ -54,7 +59,7 @@ func (c *Client) Update(cfg ClientConfig) {
 	} else if cfg.Subdomain != "" {
 		c.baseURL = "https://" + cfg.Subdomain + ".freshservice.com"
 	}
-	c.cookie = cfg.Cookie
+	c.itildeskSession = cfg.ItildeskSession
 	c.csrf = cfg.CSRF
 }
 
@@ -81,15 +86,15 @@ func (c *Client) Put(ctx context.Context, path string, body []byte) ([]byte, err
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body []byte) ([]byte, error) {
 	c.mu.RLock()
 	baseURL := c.baseURL
-	cookie := c.cookie
+	itildeskSession := c.itildeskSession
 	csrf := c.csrf
 	c.mu.RUnlock()
 
 	if baseURL == "" {
 		return nil, errors.New("no API base URL configured (set subdomain or --base-url; run 'fsvc config set subdomain <domain>')")
 	}
-	if cookie == "" {
-		return nil, errors.New("no session cookie configured (run 'fsvc config set cookie <cookie>')")
+	if itildeskSession == "" {
+		return nil, errors.New("no session configured (run 'fsvc config set itildesk-session <value>')")
 	}
 
 	u := baseURL + "/api/_/" + strings.TrimPrefix(path, "/")
@@ -106,7 +111,7 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Cookie", cookie)
+	req.Header.Set("Cookie", itildeskSessionCookie+"="+itildeskSession)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	}
@@ -136,7 +141,7 @@ func (c *Client) CheckStatus(resp *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 	msg := fmt.Sprintf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("%s (session cookie invalid or expired; run 'fsvc config set cookie ...')", msg)
+		return fmt.Errorf("%s (session invalid or expired; run 'fsvc config set itildesk-session <value>')", msg)
 	}
 	return errors.New(msg)
 }
