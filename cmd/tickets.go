@@ -20,7 +20,7 @@ type TicketsCmdGroup struct {
 	Export            TicketsExportCmd            `cmd:"" help:"Export a ticket to a DOCX or PDF file"`
 	Classify          TicketsClassifyCmd          `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
 	FillStartDates    TicketsFillStartDatesCmd    `cmd:"" help:"Backfill planned_start_date from created_at on your unresolved tickets"`
-	FillEndDates      TicketsFillEndDatesCmd      `cmd:"" help:"Bulk-set planned_end_date to now + N days on your unresolved tickets"`
+	PushEndDates      TicketsPushEndDatesCmd      `cmd:"" help:"Push planned_end_date to now + N days on your unresolved tickets"`
 	SyncPriority      TicketsSyncPriorityCmd      `cmd:"" help:"Sync priority from urgency+impact via standard matrix"`
 	SyncUrgencyImpact TicketsSyncUrgencyImpactCmd `cmd:"" help:"Set urgency+impact to the minimum pair that satisfies the current priority"`
 	Update            TicketsUpdateCmd            `cmd:"" help:"Update a ticket"`
@@ -446,16 +446,16 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *Client) erro
 	return previewAndApply(ctx, client, changes, c.Yes)
 }
 
-// ---- fill-end-dates ---------------------------------------------------------
+// ---- push-end-dates ---------------------------------------------------------
 
-type TicketsFillEndDatesCmd struct {
+type TicketsPushEndDatesCmd struct {
 	Yes         bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
 	Days        int  `arg:"" help:"Business days from now to set as planned end date" default:"3"`
 	WithinHours int  `help:"Also push planned_end_date when it falls within this many hours of now (0 = only nil/past dates)"`
 	PerPage     int  `help:"Tickets per page" default:"100"`
 }
 
-func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *Client) error {
+func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error {
 	base := nowInTZ()
 	target := AddBusinessDays(base, c.Days).Format(time.RFC3339)
 

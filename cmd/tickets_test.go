@@ -373,7 +373,7 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 	}
 }
 
-func TestTicketsFillEndDatesCmd(t *testing.T) {
+func TestTicketsPushEndDatesCmd(t *testing.T) {
 	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
 	var putCalls []struct {
 		Path string
@@ -412,7 +412,7 @@ func TestTicketsFillEndDatesCmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsFillEndDatesCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsPushEndDatesCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -435,7 +435,7 @@ func TestTicketsFillEndDatesCmd(t *testing.T) {
 	}
 }
 
-func TestTicketsFillEndDatesCmd_WithinHours(t *testing.T) {
+func TestTicketsPushEndDatesCmd_WithinHours(t *testing.T) {
 	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)) // now = 08-04 12:00 UTC
 	var putCalls []struct {
 		Path string
@@ -466,7 +466,7 @@ func TestTicketsFillEndDatesCmd_WithinHours(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsFillEndDatesCmd{Yes: true, PerPage: 100, WithinHours: 24}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsPushEndDatesCmd{Yes: true, PerPage: 100, WithinHours: 24}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

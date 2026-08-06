@@ -40,15 +40,15 @@ fsvc config set csrf-token "4oEDe-..."
 # Then:
 fsvc tickets update 10100 status=4                     # resolve a ticket
 fsvc tickets fill-start-dates -y                       # backfill planned_start_date
-fsvc tickets fill-end-dates 3 -y                        # bump due dates by 3 business days
-fsvc tickets fill-end-dates 3 --within-hours 24 -y      # also push dates due inside 24h
+fsvc tickets push-end-dates 3 -y                        # bump due dates by 3 business days
+fsvc tickets push-end-dates 3 --within-hours 24 -y      # also push dates due inside 24h
 fsvc tickets sync-priority -y                          # sync priority from urgency+impact
 fsvc tickets sync-urgency-impact -y                    # set minimal urgency+impact for each priority
 ```
 
 - Config lives at `~/.config/fsvc/fsvc.json` (or set `--subdomain`/`--itildesk-session` flags per invocation)
 - The session rotates automatically — the CLI captures the rotated `_itildesk_session` from `Set-Cookie` on each response
-- Use `--time-zone Europe/London` for accurate business-day math on `classify` and `fill-end-dates`
+- Use `--time-zone Europe/London` for accurate business-day math on `classify` and `push-end-dates`
 - Point at a mock server with `--base-url http://127.0.0.1:PORT` for safe testing
 
 ## Config
@@ -83,12 +83,12 @@ Verify the session cookie works. Hits `GET /api/_/tickets?per_page=1`.
 | `tickets conversations <id>` | List conversations for a ticket. `--per-page`, `--include`, `--format` |
 | `tickets classify` | Categorize your unresolved tickets into 3 lists: unassigned, stale agent response, customer responded. `--older-than-days` (business days, default 2), `--query-json`, optional filter ID arg |
 | `tickets fill-start-dates` | Backfill `planned_start_date` from `first_responded_at` on your unresolved tickets. Preview + confirm, `-y` to skip prompt |
-| `tickets fill-end-dates` | Bulk-set `planned_end_date` to now + N business days. `[days]` (default 3), `--within-hours` (push dates due inside window), `-y` |
+| `tickets push-end-dates` | Push `planned_end_date` to now + N business days. `[days]` (default 3), `--within-hours` (push dates due inside window), `-y` |
 | `tickets sync-priority` | Sync priority from urgency+impact using the standard priority matrix. `-y` |
 | `tickets sync-urgency-impact` | Set urgency+impact to the minimum pair that satisfies the current priority (prefers raising urgency over impact). `-y` |
 | `tickets update <id> key=value...` | Update a ticket. `key=value` pairs (dotted keys for nested), `--body` for raw JSON |
 
-All mutation commands (`fill-start-dates`, `fill-end-dates`, `sync-priority`, `sync-urgency-impact`, `update`) require a CSRF token for write operations. Preview is always shown; `-y`/`--yes` skips the confirmation prompt.
+All mutation commands (`fill-start-dates`, `push-end-dates`, `sync-priority`, `sync-urgency-impact`, `update`) require a CSRF token for write operations. Preview is always shown; `-y`/`--yes` skips the confirmation prompt.
 
 ### `fsvc ticket-filters show <id>`
 
