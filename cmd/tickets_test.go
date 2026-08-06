@@ -435,6 +435,57 @@ func TestTicketsFillEndDatesCmd(t *testing.T) {
 	}
 }
 
+func TestTicketsFillEndDatesCmd_WithinHours(t *testing.T) {
+	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)) // now = 08-04 12:00 UTC
+	var putCalls []struct {
+		Path string
+		Body []byte
+	}
+	var putMu sync.Mutex
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// 10: within window (6h out). 20: beyond window (72h out). 30: past.
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_end_date":"2026-08-04T18:00:00Z"},{"id":20,"planned_end_date":"2026-08-07T12:00:00Z"},{"id":30,"planned_end_date":"2026-08-01T00:00:00Z"}],"meta":{"has_next":false}}`)
+	})
+	for _, id := range []string{"10", "30"} {
+		mux.HandleFunc("/api/_/tickets/"+id, func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			putMu.Lock()
+			putCalls = append(putCalls, struct {
+				Path string
+				Body []byte
+			}{Path: r.URL.Path, Body: b})
+			putMu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"ticket":{}}`)
+		})
+	}
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	out := captureStdout(t, func() {
+		err := (&TicketsFillEndDatesCmd{Yes: true, PerPage: 100, WithinHours: 24}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "ticket 10") {
+		t.Errorf("expected within-window ticket 10 to be pushed, got %q", out)
+	}
+	if !strings.Contains(out, "ticket 30") {
+		t.Errorf("expected past ticket 30 to be pushed, got %q", out)
+	}
+	if strings.Contains(out, "ticket 20") {
+		t.Errorf("beyond-window ticket 20 should not appear, got %q", out)
+	}
+	if len(putCalls) != 2 {
+		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
+	}
+}
+
 func TestTicketsListCmd_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

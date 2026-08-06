@@ -449,9 +449,10 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *Client) erro
 // ---- fill-end-dates ---------------------------------------------------------
 
 type TicketsFillEndDatesCmd struct {
-	Yes     bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
-	Days    int  `help:"Business days from now to set as planned end date" default:"3"`
-	PerPage int  `help:"Tickets per page" default:"100"`
+	Yes         bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
+	Days        int  `help:"Business days from now to set as planned end date" default:"3"`
+	WithinHours int  `help:"Also push planned_end_date when it falls within this many hours of now (0 = only nil/past dates)"`
+	PerPage     int  `help:"Tickets per page" default:"100"`
 }
 
 func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *Client) error {
@@ -466,8 +467,14 @@ func (c *TicketsFillEndDatesCmd) Run(ctx context.Context, client *Client) error 
 		}
 
 		if cur != "" {
-			if at, err := time.Parse(time.RFC3339, cur); err == nil && at.After(base) {
-				return nil // already in the future, leave alone
+			if at, err := time.Parse(time.RFC3339, cur); err == nil {
+				if c.WithinHours > 0 {
+					if at.After(base.Add(time.Duration(c.WithinHours) * time.Hour)) {
+						return nil // beyond the push window, leave alone
+					}
+				} else if at.After(base) {
+					return nil // already in the future, leave alone
+				}
 			}
 		}
 
