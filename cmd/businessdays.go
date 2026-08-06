@@ -36,17 +36,6 @@ func AddBusinessDays(t time.Time, n int) time.Time {
 	return t
 }
 
-// SubBusinessDays subtracts n weekdays, skipping weekends.
-func SubBusinessDays(t time.Time, n int) time.Time {
-	for i := 0; i < n; {
-		t = t.AddDate(0, 0, -1)
-		if isWeekday(t) {
-			i++
-		}
-	}
-	return t
-}
-
 // BusinessDaysBetween returns the number of weekdays between from and to,
 // as a float. Weekends are skipped; partial start/end days count
 // fractionally.

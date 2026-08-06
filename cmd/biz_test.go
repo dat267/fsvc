@@ -84,34 +84,34 @@ func TestPriorityFor(t *testing.T) {
 }
 
 func TestClassify(t *testing.T) {
-	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	threshold := now.Add(-24 * time.Hour)
-	created := now.Add(-72 * time.Hour)
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC) // Tuesday
+	created := now.Add(-72 * time.Hour)                 // Saturday
 
 	unassigned := int64(-1)
 	assigned := int64(5)
 	other := int64(9)
 
 	tests := []struct {
-		name       string
-		responder  *int64
-		lastMsg    time.Time
-		lastUserID int64
-		created    time.Time
-		threshold  time.Time
-		want       Category
+		name          string
+		responder     *int64
+		lastMsg       time.Time
+		lastUserID    int64
+		created       time.Time
+		olderThanDays float64
+		want          Category
 	}{
-		{"unassigned", &unassigned, time.Time{}, 0, created, threshold, CategoryUnassigned},
-		{"assigned no msg old created", &assigned, time.Time{}, 0, created, threshold, CategoryStaleAgent},
-		{"assigned no msg recent created", &assigned, time.Time{}, 0, now, threshold, CategoryNone},
-		{"someone else replied", &assigned, now, other, created, threshold, CategoryCustomer},
-		{"stale agent reply", &assigned, created, assigned, created, threshold, CategoryStaleAgent},
-		{"recent agent reply", &assigned, now, assigned, created, threshold, CategoryNone},
+		{"unassigned", &unassigned, time.Time{}, 0, created, 1, CategoryUnassigned},
+		{"assigned no msg old created", &assigned, time.Time{}, 0, created, 1, CategoryStaleAgent},
+		{"assigned no msg recent created", &assigned, time.Time{}, 0, now, 1, CategoryNone},
+		{"someone else replied", &assigned, now, other, created, 1, CategoryCustomer},
+		{"stale agent reply", &assigned, created, assigned, created, 1, CategoryStaleAgent},
+		{"recent agent reply", &assigned, now, assigned, created, 1, CategoryNone},
+		{"recent within threshold", &assigned, now.Add(-30 * time.Minute), assigned, created, 1, CategoryNone},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Classify(tt.responder, tt.lastMsg, tt.lastUserID, tt.created, tt.threshold)
+			got := Classify(tt.responder, tt.lastMsg, tt.lastUserID, tt.created, tt.olderThanDays, now)
 			if got != tt.want {
 				t.Errorf("Classify() = %v, want %v", got, tt.want)
 			}

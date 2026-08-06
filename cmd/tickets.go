@@ -97,11 +97,11 @@ func (c *TicketsConvCmd) Run(ctx context.Context, client *Client) error {
 }
 
 type TicketsClassifyCmd struct {
-	OlderThanDays int    `help:"Business days threshold for stale agent response" default:"2"`
-	Page          int    `help:"Page number" default:"1"`
-	PerPage       int    `help:"Tickets per page" default:"100"`
-	QueryJSON     string `name:"query-json" help:"Raw JSON query params to pass to the tickets list endpoint"`
-	Filter        int64  `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
+	OlderThanDays float64 `help:"Business days without responder activity before a ticket is listed as stale" default:"2"`
+	Page          int     `help:"Page number" default:"1"`
+	PerPage       int     `help:"Tickets per page" default:"100"`
+	QueryJSON     string  `name:"query-json" help:"Raw JSON query params to pass to the tickets list endpoint"`
+	Filter        int64   `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
 }
 
 var classifyColumns = []Column{
@@ -129,7 +129,7 @@ func toCatTickets(tickets []Ticket) []catTicket {
 const categoriesWorkers = 8
 
 func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
-	threshold := SubBusinessDays(nowInTZ(), c.OlderThanDays)
+	now := nowInTZ()
 
 	// Two targeted queries instead of scanning every unresolved ticket:
 	//   1. unassigned unresolved tickets (responder_id = -1)
@@ -165,7 +165,7 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 		}
 	}
 
-	staleAgent, awaitingCustomer, err := classifyTickets(ctx, client, myTickets, threshold)
+	staleAgent, awaitingCustomer, err := classifyTickets(ctx, client, myTickets, c.OlderThanDays, now)
 	if err != nil {
 		return err
 	}
@@ -184,7 +184,7 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 
 	fmt.Printf("## Unassigned (%d)\n\n", len(unassigned))
 	printCatTable(toCatTickets(unassigned), client)
-	fmt.Printf("\n## Agent replied > %d business days, awaiting customer (%d)\n\n", c.OlderThanDays, len(staleAgent))
+	fmt.Printf("\n## No activity from you for > %g business days, awaiting customer (%d)\n\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, client)
 	fmt.Printf("\n## Last reply from someone else, awaiting agent (%d)\n\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, client)
@@ -229,7 +229,7 @@ func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *Client,
 // classifyTickets assigns each ticket to a category using a bounded worker
 // pool. The conversation fetch per ticket is the slow part and runs
 // concurrently; results are collected under a mutex.
-func classifyTickets(ctx context.Context, client *Client, tickets []Ticket, threshold time.Time) (staleAgent, awaitingCustomer []catTicket, _ error) {
+func classifyTickets(ctx context.Context, client *Client, tickets []Ticket, olderThanDays float64, now time.Time) (staleAgent, awaitingCustomer []catTicket, _ error) {
 	workers := categoriesWorkers
 	if len(tickets) < workers {
 		workers = len(tickets)
@@ -262,7 +262,7 @@ func classifyTickets(ctx context.Context, client *Client, tickets []Ticket, thre
 				if ctx.Err() != nil {
 					return
 				}
-				entry, kind, err := classifyTicket(ctx, client, t, threshold)
+				entry, kind, err := classifyTicket(ctx, client, t, olderThanDays, now)
 				if err != nil {
 					errOnce.Do(func() {
 						firstErr = err
@@ -291,7 +291,7 @@ func classifyTickets(ctx context.Context, client *Client, tickets []Ticket, thre
 }
 
 // classifyTicket decides which category a single ticket belongs to.
-func classifyTicket(ctx context.Context, client *Client, t Ticket, threshold time.Time) (catTicket, Category, error) {
+func classifyTicket(ctx context.Context, client *Client, t Ticket, olderThanDays float64, now time.Time) (catTicket, Category, error) {
 	entry := catTicket{id: t.ID, ticket: t}
 
 	latest, err := client.LatestConversation(ctx, t.ID)
@@ -306,7 +306,7 @@ func classifyTicket(ctx context.Context, client *Client, t Ticket, threshold tim
 		lastUserID = latest.UserID
 	}
 
-	cat := Classify(t.ResponderID, lastMsg, lastUserID, t.CreatedAt, threshold)
+	cat := Classify(t.ResponderID, lastMsg, lastUserID, t.CreatedAt, olderThanDays, now)
 	if cat == CategoryCustomer || cat == CategoryStaleAgent {
 		entry.lastMsgAt = lastMsg
 		if lastMsg.IsZero() {

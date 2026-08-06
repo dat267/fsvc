@@ -10,8 +10,8 @@ const (
 	CategoryNone Category = iota
 	// CategoryUnassigned means the ticket has no responder.
 	CategoryUnassigned
-	// CategoryStaleAgent means the agent's last message is older than the
-	// threshold and the ticket is waiting on the customer.
+	// CategoryStaleAgent means the last message is from the responder and there
+	// has been no activity for olderThanDays business days (awaiting customer).
 	CategoryStaleAgent
 	// CategoryCustomer means the last message came from someone other than the
 	// responder and needs an agent reply.
@@ -26,21 +26,22 @@ const (
 // lastUserID is the author of that message. created is the ticket creation
 // time, used as the reference when there are no messages. A last message from
 // anyone other than the responder puts the ticket in the customer-waiting
-// bucket; otherwise the agent's own reply is checked against the threshold.
-func Classify(responderID *int64, lastMsg time.Time, lastUserID int64, created time.Time, threshold time.Time) Category {
+// bucket; otherwise it is stale when the elapsed business days since the last
+// activity (or creation) exceed olderThanDays.
+func Classify(responderID *int64, lastMsg time.Time, lastUserID int64, created time.Time, olderThanDays float64, now time.Time) Category {
 	if responderID == nil || *responderID < 0 {
 		return CategoryUnassigned
+	}
+
+	if !lastMsg.IsZero() && lastUserID != *responderID {
+		return CategoryCustomer
 	}
 
 	ref := lastMsg
 	if ref.IsZero() {
 		ref = created
 	}
-
-	if !lastMsg.IsZero() && lastUserID != *responderID {
-		return CategoryCustomer
-	}
-	if ref.Before(threshold) {
+	if BusinessDaysBetween(ref, now) > olderThanDays {
 		return CategoryStaleAgent
 	}
 	return CategoryNone
