@@ -450,7 +450,7 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *Client) erro
 
 type TicketsFillEndDatesCmd struct {
 	Yes         bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
-	Days        int  `help:"Business days from now to set as planned end date" default:"3"`
+	Days        int  `arg:"" help:"Business days from now to set as planned end date" default:"3"`
 	WithinHours int  `help:"Also push planned_end_date when it falls within this many hours of now (0 = only nil/past dates)"`
 	PerPage     int  `help:"Tickets per page" default:"100"`
 }
