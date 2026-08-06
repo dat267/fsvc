@@ -17,6 +17,7 @@ import (
 type TicketsCmdGroup struct {
 	List              TicketsListCmd              `cmd:"" help:"List tickets"`
 	Conversations     TicketsConvCmd              `cmd:"" help:"List conversations for a ticket"`
+	Export            TicketsExportCmd            `cmd:"" help:"Export a ticket to a DOCX or PDF file"`
 	Classify          TicketsClassifyCmd          `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
 	FillStartDates    TicketsFillStartDatesCmd    `cmd:"" help:"Backfill planned_start_date from created_at on your unresolved tickets"`
 	FillEndDates      TicketsFillEndDatesCmd      `cmd:"" help:"Bulk-set planned_end_date to now + N days on your unresolved tickets"`

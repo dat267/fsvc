@@ -47,8 +47,9 @@ Two private-API calls:
 ## Fonts / encoding
 
 - DOCX: UTF-8 native, no font asset needed.
-- PDF: bundle DejaVu Sans TTF (UTF-8 capable, covers Arabic names/subjects).
-  Embedded via FPDF.
+- PDF: DejaVu Sans TTF (regular + bold) embedded via `//go:embed` from
+  `cmd/assets/` and loaded with `AddUTF8FontFromBytes` — no runtime file
+  resolution, works from any working directory.
 
 ## New dependency
 
@@ -56,5 +57,5 @@ Two private-API calls:
 
 ## Files
 
-- New: `cmd/export.go`, `cmd/docx.go`, `cmd/pdf.go`, `assets/DejaVuSans.ttf`
+- New: `cmd/export.go`, `cmd/docx.go`, `cmd/pdf.go`, `cmd/assets/DejaVuSans*.ttf`
 - Tests: `cmd/export_test.go` (docx+pdf bytes non-empty, extension validation)
