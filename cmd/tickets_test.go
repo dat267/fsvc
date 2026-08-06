@@ -210,7 +210,7 @@ func TestTicketsClassifyCmd(t *testing.T) {
 	if !strings.Contains(out, "10103") {
 		t.Errorf("expected unassigned ticket 10103:\n%s", out)
 	}
-	if !strings.Contains(out, "## No activity from you for > 1 business days, awaiting customer (2)") {
+	if !strings.Contains(out, "## Waiting on customer > 1 business days — follow up or resolve (2)") {
 		t.Errorf("expected 2 stale-agent tickets:\n%s", out)
 	}
 	if !strings.Contains(out, "10104") {

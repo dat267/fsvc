@@ -10,8 +10,10 @@ const (
 	CategoryNone Category = iota
 	// CategoryUnassigned means the ticket has no responder.
 	CategoryUnassigned
-	// CategoryStaleAgent means the last message is from the responder and there
-	// has been no activity for olderThanDays business days (awaiting customer).
+	// CategoryStaleAgent means the responder has done their part and the ticket
+	// is waiting on the customer: the last message is from the responder (or the
+	// ticket has no messages at all) and there has been no reply for
+	// olderThanDays business days.
 	CategoryStaleAgent
 	// CategoryCustomer means the last message came from someone other than the
 	// responder and needs an agent reply.
@@ -26,8 +28,9 @@ const (
 // lastUserID is the author of that message. created is the ticket creation
 // time, used as the reference when there are no messages. A last message from
 // anyone other than the responder puts the ticket in the customer-waiting
-// bucket; otherwise it is stale when the elapsed business days since the last
-// activity (or creation) exceed olderThanDays.
+// bucket; otherwise it is waiting-on-customer when the elapsed business days
+// since the last message (or creation, for no-message tickets) exceed
+// olderThanDays.
 func Classify(responderID *int64, lastMsg time.Time, lastUserID int64, created time.Time, olderThanDays float64, now time.Time) Category {
 	if responderID == nil || *responderID < 0 {
 		return CategoryUnassigned

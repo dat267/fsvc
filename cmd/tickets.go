@@ -97,7 +97,7 @@ func (c *TicketsConvCmd) Run(ctx context.Context, client *Client) error {
 }
 
 type TicketsClassifyCmd struct {
-	OlderThanDays float64 `help:"Business days without responder activity before a ticket is listed as stale" default:"2"`
+	OlderThanDays float64 `help:"Business days waiting on the customer before flagging for follow-up/resolution" default:"2"`
 	Page          int     `help:"Page number" default:"1"`
 	PerPage       int     `help:"Tickets per page" default:"100"`
 	QueryJSON     string  `name:"query-json" help:"Raw JSON query params to pass to the tickets list endpoint"`
@@ -184,7 +184,7 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 
 	fmt.Printf("## Unassigned (%d)\n\n", len(unassigned))
 	printCatTable(toCatTickets(unassigned), client)
-	fmt.Printf("\n## No activity from you for > %g business days, awaiting customer (%d)\n\n", c.OlderThanDays, len(staleAgent))
+	fmt.Printf("\n## Waiting on customer > %g business days — follow up or resolve (%d)\n\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, client)
 	fmt.Printf("\n## Last reply from someone else, awaiting agent (%d)\n\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, client)
