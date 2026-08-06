@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 type TicketsExportCmd struct {
-	ID   int64  `arg:"" help:"Ticket ID"`
-	Out  string `short:"o" help:"Output file (.docx or .pdf)" required:""`
-	Tags bool   `help:"Include raw tag values in the summary"`
+	ID  int64  `arg:"" help:"Ticket ID"`
+	Out string `short:"o" help:"Output file (.docx or .pdf)" required:""`
 }
 
 // exportDoc is the data the exporters render.
@@ -36,9 +37,9 @@ func (c *TicketsExportCmd) Run(ctx context.Context, client *Client) error {
 	var data []byte
 	switch ext {
 	case ".docx":
-		data, err = renderDocx(doc, c.Tags)
+		data, err = renderDocx(doc)
 	case ".pdf":
-		data, err = renderPDF(doc, c.Tags)
+		data, err = renderPDF(doc)
 	}
 	if err != nil {
 		return err
@@ -88,7 +89,11 @@ func exportField(t map[string]any, key string) string {
 	case string:
 		return val
 	case float64:
-		return fmt.Sprintf("%g", val)
+		// Render whole numbers without scientific notation (e.g. user IDs).
+		if val == math.Trunc(val) && math.Abs(val) < 1e15 {
+			return strconv.FormatInt(int64(val), 10)
+		}
+		return strconv.FormatFloat(val, 'f', -1, 64)
 	case bool:
 		return fmt.Sprintf("%v", val)
 	default:
@@ -116,4 +121,15 @@ func stripHTML(s string) string {
 		}
 	}
 	return strings.TrimSpace(html.UnescapeString(b.String()))
+}
+
+// conversationAuthor returns the display name (or id) of a conversation author,
+// preferring the nested user object when present.
+func conversationAuthor(c map[string]any) string {
+	if u, ok := c["user"].(map[string]any); ok {
+		if name := exportField(u, "name"); name != "" {
+			return name
+		}
+	}
+	return exportField(c, "user_id")
 }

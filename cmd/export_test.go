@@ -24,7 +24,7 @@ func testExportFixture(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/api/_/tickets/10100/conversations", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"conversations":[{"id":1,"user_id":2100,"incoming":true,"created_at":"2026-08-01T10:30:00Z","body_text":"<p>Please fix the printer</p>"},{"id":2,"user_id":3100,"incoming":false,"created_at":"2026-08-01T11:00:00Z","body_text":"<p>Will do</p>"}]}`))
+		_, _ = w.Write([]byte(`{"conversations":[{"id":1,"user_id":2100,"incoming":true,"created_at":"2026-08-01T10:30:00Z","body_text":"<p>Please fix the printer</p>"},{"id":2,"user_id":3100,"user":{"name":"Nadia Rahman"},"incoming":false,"created_at":"2026-08-01T11:00:00Z","body_text":"<p>Will do</p>"}]}`))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -64,7 +64,7 @@ func TestTicketsExportCmd_Docx(t *testing.T) {
 	if docXML == "" {
 		t.Fatal("missing word/document.xml")
 	}
-	for _, want := range []string{"Printer not working", "Omar Saleh", "Conversations", "Please fix the printer"} {
+	for _, want := range []string{"Printer not working", "Hello &amp; hi", "Conversations", "Please fix the printer", "Nadia Rahman", "2100"} {
 		if !strings.Contains(docXML, want) {
 			t.Errorf("expected %q in docx, got:\n%s", want, docXML)
 		}

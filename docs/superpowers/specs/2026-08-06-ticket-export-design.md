@@ -30,11 +30,9 @@ Two private-API calls:
 
 ## Document structure
 
-1. Title: subject + ticket # (display_id)
-2. Summary table: key fields (status, priority, urgency, impact, requester,
-   responder, group, department, created_at, due_by, tags, custom_fields)
-3. Conversations section: each as author / direction (customer vs agent) /
-   timestamp / body_text
+Minimal, AI-analysis focused: title (subject + ticket #), description, then the
+conversation thread (author name, direction, timestamp, body). No summary table,
+no tags, no custom fields, no raw IDs beyond the ticket number.
 
 ## Implementation
 

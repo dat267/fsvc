@@ -9,7 +9,7 @@ import (
 )
 
 // renderDocx produces a minimal but valid .docx containing the ticket.
-func renderDocx(doc *exportDoc, includeTags bool) ([]byte, error) {
+func renderDocx(doc *exportDoc) ([]byte, error) {
 	var body strings.Builder
 	body.WriteString(`<w:body>`)
 
@@ -20,8 +20,9 @@ func renderDocx(doc *exportDoc, includeTags bool) ([]byte, error) {
 	}
 	writeDocxHeading(&body, fmt.Sprintf("Ticket #%s — %s", display, subject), 1)
 
-	body.WriteString(`<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Summary</w:t></w:r></w:p>`)
-	writeDocxSummary(&body, doc.Ticket, includeTags)
+	if desc := stripHTML(exportField(doc.Ticket, "description_text")); desc != "" {
+		writeDocxPara(&body, desc)
+	}
 
 	body.WriteString(`<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Conversations</w:t></w:r></w:p>`)
 	if len(doc.Conversations) == 0 {
@@ -51,47 +52,12 @@ func writeDocxPara(b *strings.Builder, text string) {
 	b.WriteString(`</w:t></w:r></w:p>`)
 }
 
-func writeDocxSummary(b *strings.Builder, t map[string]any, includeTags bool) {
-	rows := []struct{ label, key string }{
-		{"Status", "status"}, {"Priority", "priority"}, {"Urgency", "urgency"},
-		{"Impact", "impact"}, {"Requester", "requester_name"}, {"Requester ID", "requester_id"},
-		{"Responder", "responder_name"}, {"Responder ID", "responder_id"},
-		{"Group", "group_name"}, {"Department", "department_name"},
-		{"Created", "created_at"}, {"Updated", "updated_at"}, {"Due", "due_by"},
-	}
-	for _, r := range rows {
-		if v := exportField(t, r.key); v != "" {
-			b.WriteString(`<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="3600"/></w:pPr><w:r><w:t>`)
-			xmlEscape(b, r.label+":")
-			b.WriteString(`</w:t></w:r><w:r><w:tab/><w:t xml:space="preserve">`)
-			xmlEscape(b, v)
-			b.WriteString(`</w:t></w:r></w:p>`)
-		}
-	}
-	if desc := stripHTML(exportField(t, "description_text")); desc != "" {
-		writeDocxPara(b, "Description: "+desc)
-	}
-	if includeTags {
-		if tags := exportField(t, "tags"); tags != "" {
-			writeDocxPara(b, "Tags: "+tags)
-		}
-	}
-	if cf := exportField(t, "custom_fields"); cf != "" && cf != "null" {
-		writeDocxPara(b, "Custom fields: "+cf)
-	}
-}
-
 func writeDocxConversation(b *strings.Builder, c map[string]any) {
 	dir := "incoming"
 	if incoming, ok := c["incoming"].(bool); ok && !incoming {
 		dir = "outgoing"
 	}
-	author := exportField(c, "user_id")
-	if u, ok := c["user"].(map[string]any); ok {
-		if name := exportField(u, "name"); name != "" {
-			author = name
-		}
-	}
+	author := conversationAuthor(c)
 	stamp := exportField(c, "created_at")
 	bodyText := stripHTML(exportField(c, "body_text"))
 
