@@ -25,6 +25,7 @@ func (t Ticket) HasPlannedStartDate() bool { return t.PlannedStartDate != nil }
 // Conversation is a single ticket conversation.
 type Conversation struct {
 	ID        int64
+	UserID    int64
 	Incoming  bool
 	CreatedAt time.Time
 }
@@ -117,6 +118,7 @@ func decodeConversations(body []byte) ([]Conversation, error) {
 	var doc struct {
 		Conversations []struct {
 			ID        int64  `json:"id"`
+			UserID    int64  `json:"user_id"`
 			Incoming  bool   `json:"incoming"`
 			CreatedAt string `json:"created_at"`
 		} `json:"conversations"`
@@ -126,7 +128,7 @@ func decodeConversations(body []byte) ([]Conversation, error) {
 	}
 	convs := make([]Conversation, len(doc.Conversations))
 	for i, c := range doc.Conversations {
-		convs[i] = Conversation{ID: c.ID, Incoming: c.Incoming, CreatedAt: timeOf(c.CreatedAt)}
+		convs[i] = Conversation{ID: c.ID, UserID: c.UserID, Incoming: c.Incoming, CreatedAt: timeOf(c.CreatedAt)}
 	}
 	return convs, nil
 }

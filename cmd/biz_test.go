@@ -90,27 +90,28 @@ func TestClassify(t *testing.T) {
 
 	unassigned := int64(-1)
 	assigned := int64(5)
+	other := int64(9)
 
 	tests := []struct {
-		name      string
-		responder *int64
-		lastMsg   time.Time
-		incoming  bool
-		created   time.Time
-		threshold time.Time
-		want      Category
+		name       string
+		responder  *int64
+		lastMsg    time.Time
+		lastUserID int64
+		created    time.Time
+		threshold  time.Time
+		want       Category
 	}{
-		{"unassigned", &unassigned, time.Time{}, false, created, threshold, CategoryUnassigned},
-		{"assigned no msg old created", &assigned, time.Time{}, false, created, threshold, CategoryStaleAgent},
-		{"assigned no msg recent created", &assigned, time.Time{}, false, now, threshold, CategoryNone},
-		{"customer replied", &assigned, now, true, created, threshold, CategoryCustomer},
-		{"stale agent reply", &assigned, created, false, created, threshold, CategoryStaleAgent},
-		{"recent agent reply", &assigned, now, false, created, threshold, CategoryNone},
+		{"unassigned", &unassigned, time.Time{}, 0, created, threshold, CategoryUnassigned},
+		{"assigned no msg old created", &assigned, time.Time{}, 0, created, threshold, CategoryStaleAgent},
+		{"assigned no msg recent created", &assigned, time.Time{}, 0, now, threshold, CategoryNone},
+		{"someone else replied", &assigned, now, other, created, threshold, CategoryCustomer},
+		{"stale agent reply", &assigned, created, assigned, created, threshold, CategoryStaleAgent},
+		{"recent agent reply", &assigned, now, assigned, created, threshold, CategoryNone},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Classify(tt.responder, tt.lastMsg, tt.incoming, tt.created, tt.threshold)
+			got := Classify(tt.responder, tt.lastMsg, tt.lastUserID, tt.created, tt.threshold)
 			if got != tt.want {
 				t.Errorf("Classify() = %v, want %v", got, tt.want)
 			}

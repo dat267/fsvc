@@ -175,12 +175,13 @@ func TestTicketsClassifyCmd(t *testing.T) {
 			_, _ = w.Write(loadFixture(t, "tickets.json"))
 		}
 	})
-	// Ticket 10100: assigned, latest conversation incoming=false, July 31 2026 (4 days ago)
+	// Ticket 10100: assigned, latest conversation from the responder (3100),
+	// July 31 2026 (4 days ago) -> stale, awaiting customer
 	mux.HandleFunc("/api/_/tickets/10100/conversations", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"conversations":[{"id":1,"incoming":false,"created_at":"2026-07-31T00:00:00Z","user_id":1,"body_text":"."}],"meta":{"count":1}}`)
+		_, _ = fmt.Fprint(w, `{"conversations":[{"id":1,"incoming":false,"created_at":"2026-07-31T00:00:00Z","user_id":3100,"body_text":"."}],"meta":{"count":1}}`)
 	})
-	// Ticket 10101: assigned, latest conversation incoming=true, today
+	// Ticket 10101: assigned, latest conversation from someone else (2), today
 	mux.HandleFunc("/api/_/tickets/10101/conversations", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"conversations":[{"id":2,"incoming":true,"created_at":"2026-08-04T00:00:00Z","user_id":2,"body_text":"."}],"meta":{"count":1}}`)
@@ -215,8 +216,8 @@ func TestTicketsClassifyCmd(t *testing.T) {
 	if !strings.Contains(out, "10104") {
 		t.Errorf("expected no-conversation ticket 10104 in stale list using created date:\n%s", out)
 	}
-	if !strings.Contains(out, "## Customer replied, awaiting agent (1)") {
-		t.Errorf("expected 1 customer-responded ticket:\n%s", out)
+	if !strings.Contains(out, "## Last reply from someone else, awaiting agent (1)") {
+		t.Errorf("expected 1 someone-else-replied ticket:\n%s", out)
 	}
 }
 

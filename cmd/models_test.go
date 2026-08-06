@@ -66,7 +66,7 @@ func TestClient_ListTicketsTyped(t *testing.T) {
 func TestClient_LatestConversation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"conversations":[{"id":9,"incoming":true,"created_at":"2026-08-01T00:00:00Z"}]}`))
+		_, _ = w.Write([]byte(`{"conversations":[{"id":9,"user_id":77,"incoming":true,"created_at":"2026-08-01T00:00:00Z"}]}`))
 	}))
 	defer srv.Close()
 
@@ -75,7 +75,7 @@ func TestClient_LatestConversation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if conv == nil || conv.ID != 9 || !conv.Incoming {
+	if conv == nil || conv.ID != 9 || conv.UserID != 77 || !conv.Incoming {
 		t.Errorf("unexpected conversation: %+v", conv)
 	}
 }

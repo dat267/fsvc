@@ -186,7 +186,7 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 	printCatTable(toCatTickets(unassigned), client)
 	fmt.Printf("\n## Agent replied > %d business days, awaiting customer (%d)\n\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, client)
-	fmt.Printf("\n## Customer replied, awaiting agent (%d)\n\n", len(awaitingCustomer))
+	fmt.Printf("\n## Last reply from someone else, awaiting agent (%d)\n\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, client)
 	return nil
 }
@@ -300,13 +300,13 @@ func classifyTicket(ctx context.Context, client *Client, t Ticket, threshold tim
 	}
 
 	lastMsg := time.Time{}
-	incoming := false
+	var lastUserID int64
 	if latest != nil {
 		lastMsg = latest.CreatedAt
-		incoming = latest.Incoming
+		lastUserID = latest.UserID
 	}
 
-	cat := Classify(t.ResponderID, lastMsg, incoming, t.CreatedAt, threshold)
+	cat := Classify(t.ResponderID, lastMsg, lastUserID, t.CreatedAt, threshold)
 	if cat == CategoryCustomer || cat == CategoryStaleAgent {
 		entry.lastMsgAt = lastMsg
 		if lastMsg.IsZero() {
