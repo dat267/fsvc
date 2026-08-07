@@ -7,6 +7,9 @@ import (
 
 func init() {
 	SetAppName("fsvc")
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		Version = info.Main.Version
+	}
 }
 
 // CLI is the root CLI struct containing all subcommand groups.
@@ -26,12 +29,6 @@ type CLI struct {
 }
 
 var Version = "dev"
-
-func init() {
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		Version = info.Main.Version
-	}
-}
 
 type VersionCmd struct{}
 

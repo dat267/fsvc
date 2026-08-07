@@ -1,6 +1,4 @@
-// Package biz holds pure business logic for the CLI: business-day math,
-// priority matrices, and ticket classification. It has no HTTP or I/O
-// dependencies so it can be tested in isolation.
+// Package cmd is the CLI application package for fsvc.
 package cmd
 
 import "time"

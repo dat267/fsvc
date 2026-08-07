@@ -10,18 +10,14 @@ var priorityMatrix = [4][4]int{
 // still maps to the given priority in the matrix, preferring to raise urgency
 // over impact (impact is minimized first). ok is false for unknown priorities.
 func MinUrgencyImpactForPriority(priority int) (urgency, impact int, ok bool) {
-	switch priority {
-	case 1:
-		return 1, 1, true
-	case 2:
-		return 3, 1, true
-	case 3:
-		return 3, 2, true
-	case 4:
-		return 3, 3, true
-	default:
-		return 0, 0, false
+	for i := 1; i <= 3; i++ {
+		for u := 1; u <= 3; u++ {
+			if priorityMatrix[u][i] == priority {
+				return u, i, true
+			}
+		}
 	}
+	return 0, 0, false
 }
 
 // PriorityFor returns the priority for a given urgency and impact, or 0 when

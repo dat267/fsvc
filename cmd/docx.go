@@ -109,5 +109,7 @@ func buildDocx(documentXML string) ([]byte, error) {
 }
 
 func xmlEscape(b *strings.Builder, s string) {
-	_ = xml.EscapeText(b, []byte(s))
+	if err := xml.EscapeText(b, []byte(s)); err != nil {
+		panic("xml.EscapeText: " + err.Error())
+	}
 }

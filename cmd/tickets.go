@@ -140,11 +140,10 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 
 	if c.QueryJSON != "" || c.Filter != 0 {
 		var err error
-		unassigned, err = c.collectTickets(ctx, client, "")
+		myTickets, err = c.collectTickets(ctx, client, "")
 		if err != nil {
 			return err
 		}
-		myTickets = unassigned
 	} else {
 		var wg sync.WaitGroup
 		var errUn, errMy error
@@ -171,8 +170,22 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 		return err
 	}
 
-	sort.Slice(unassigned, func(i, j int) bool {
-		return unassigned[i].CreatedAt.Before(unassigned[j].CreatedAt)
+	unassignedCat := toCatTickets(unassigned)
+	unassignedCount := len(unassigned)
+
+	// When using --query-json or --filter, unassigned is nil and must be
+	// derived from the classify results.
+	if unassigned == nil {
+		for _, t := range myTickets {
+			if t.ResponderID == nil || *t.ResponderID < 0 {
+				unassignedCat = append(unassignedCat, catTicket{id: t.ID, ticket: t})
+			}
+		}
+		unassignedCount = len(unassignedCat)
+	}
+
+	sort.Slice(unassignedCat, func(i, j int) bool {
+		return unassignedCat[i].ticket.CreatedAt.Before(unassignedCat[j].ticket.CreatedAt)
 	})
 	sort.Slice(staleAgent, func(i, j int) bool {
 		return staleAgent[i].lastMsgAt.Before(staleAgent[j].lastMsgAt)
@@ -181,10 +194,16 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 		return awaitingCustomer[i].lastMsgAt.Before(awaitingCustomer[j].lastMsgAt)
 	})
 
-	fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", len(unassigned)+len(myTickets), len(myTickets), len(unassigned))
+	total := unassignedCount + len(myTickets)
+	selfAssigned := len(myTickets)
+	if unassigned == nil {
+		total = len(myTickets)
+		selfAssigned = len(myTickets) - unassignedCount
+	}
+	fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", total, selfAssigned, unassignedCount)
 
-	fmt.Printf("## Unassigned (%d)\n\n", len(unassigned))
-	printCatTable(toCatTickets(unassigned), client)
+	fmt.Printf("## Unassigned (%d)\n\n", unassignedCount)
+	printCatTable(unassignedCat, client)
 	fmt.Printf("\n## Waiting on customer > %g business days — follow up or resolve (%d)\n\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, client)
 	fmt.Printf("\n## Last reply from someone else, awaiting agent (%d)\n\n", len(awaitingCustomer))

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -35,7 +36,11 @@ type Client struct {
 }
 
 func New(cfg ClientConfig) *Client {
-	jar, _ := cookiejar.New(nil)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		log.Printf("cookie jar unavailable: %v (cookies won't be persisted)", err)
+		jar = nil
+	}
 	baseURL := cfg.BaseURL
 	if baseURL == "" && cfg.Subdomain != "" {
 		baseURL = "https://" + cfg.Subdomain + ".freshservice.com"
@@ -117,15 +122,20 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return nil, err
 	}
+	bodyDrained := false
 	defer func() {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		if !bodyDrained {
+			_, _ = io.Copy(io.Discard, resp.Body)
+		}
 		_ = resp.Body.Close()
 	}()
 
 	if err := c.CheckStatus(resp); err != nil {
 		return nil, err
 	}
-	return io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	bodyDrained = true
+	return data, err
 }
 
 func (c *Client) CheckStatus(resp *http.Response) error {
