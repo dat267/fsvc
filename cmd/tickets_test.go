@@ -52,13 +52,13 @@ func TestTicketsListCmd_Table(t *testing.T) {
 		if r.URL.Query().Get("per_page") != "30" {
 			t.Errorf("expected default per_page=30, got %v", r.URL.Query())
 		}
-		if r.URL.Query().Get("order_type") != "desc" {
-			t.Errorf("expected default order_type=desc, got %v", r.URL.Query())
+		if r.URL.Query().Get("order_type") != "asc" {
+			t.Errorf("expected default order_type=asc, got %v", r.URL.Query())
 		}
 	})
 
 	out := captureStdout(t, func() {
-		err := (&TicketsListCmd{OrderBy: "created_at", OrderType: "desc", Page: 1, PerPage: 30}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsListCmd{OrderBy: "created_at", OrderType: "asc", Page: 1, PerPage: 30}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -144,6 +144,12 @@ func TestTicketsConvCmd(t *testing.T) {
 		}
 		if r.URL.Query().Get("per_page") != "3" {
 			t.Errorf("expected per_page=3, got %v", r.URL.Query())
+		}
+		if r.URL.Query().Get("order_by") != "created_at" {
+			t.Errorf("expected order_by=created_at, got %v", r.URL.Query())
+		}
+		if r.URL.Query().Get("order_type") != "asc" {
+			t.Errorf("expected order_type=asc, got %v", r.URL.Query())
 		}
 	})
 

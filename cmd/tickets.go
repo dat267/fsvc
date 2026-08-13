@@ -17,7 +17,7 @@ import (
 type TicketsCmdGroup struct {
 	List              TicketsListCmd              `cmd:"" help:"List tickets"`
 	Conversations     TicketsConvCmd              `cmd:"" help:"List conversations for a ticket"`
-	Export            TicketsExportCmd            `cmd:"" help:"Export a ticket to a DOCX or PDF file"`
+	Export            TicketsExportCmd            `cmd:"" help:"Export a ticket to DOCX, Markdown, or HTML"`
 	Classify          TicketsClassifyCmd          `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
 	FillStartDates    TicketsFillStartDatesCmd    `cmd:"" help:"Backfill planned_start_date from created_at on your unresolved tickets"`
 	PushEndDates      TicketsPushEndDatesCmd      `cmd:"" help:"Push planned_end_date to now + N days on your unresolved tickets"`
@@ -31,7 +31,7 @@ type TicketsListCmd struct {
 	Filter    int64  `help:"Ticket filter/view id"`
 	Include   string `help:"Comma-separated fields to include"`
 	OrderBy   string `help:"Field to order by" default:"created_at"`
-	OrderType string `help:"Sort order" enum:"desc,asc" default:"desc"`
+	OrderType string `help:"Sort order" enum:"desc,asc" default:"asc"`
 	Page      int    `help:"Page number" default:"1"`
 	PerPage   int    `help:"Tickets per page" default:"30"`
 }
@@ -85,6 +85,8 @@ var ticketsConvColumns = []Column{
 func (c *TicketsConvCmd) Run(ctx context.Context, client *Client) error {
 	q := url.Values{}
 	q.Set("per_page", strconv.Itoa(c.PerPage))
+	q.Set("order_by", "created_at")
+	q.Set("order_type", "asc")
 	if c.Include != "" {
 		q.Set("include", c.Include)
 	}

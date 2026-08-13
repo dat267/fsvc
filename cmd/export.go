@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,23 +15,53 @@ import (
 
 type TicketsExportCmd struct {
 	ID  int64  `arg:"" help:"Ticket ID"`
-	Out string `short:"o" help:"Output file (.docx or .pdf)" required:""`
+	Out string `short:"o" help:"Output file (.docx, .md, or .html)" required:""`
 }
 
 // exportDoc is the data the exporters render.
 type exportDoc struct {
 	Ticket        map[string]any
 	Conversations []map[string]any
+	Images        []exportImage
+	Attachments   []exportAttachment
+}
+
+// exportImage is a downloaded image to embed in an export. Owner is "ticket"
+// or "conv-<id>" and determines which section renders the image.
+type exportImage struct {
+	ID    string
+	Data  []byte
+	Mime  string
+	Name  string
+	Owner string
+}
+
+// exportAttachment is non-image attachment metadata (not downloaded).
+type exportAttachment struct {
+	ID          string
+	Name        string
+	ContentType string
+	Size        int64
+	URL         string
+}
+
+// exportAsset is a file written alongside a markdown export.
+type exportAsset struct {
+	Name string
+	Data []byte
 }
 
 func (c *TicketsExportCmd) Run(ctx context.Context, client *Client) error {
 	ext := strings.ToLower(filepath.Ext(c.Out))
-	if ext != ".docx" && ext != ".pdf" {
-		return fmt.Errorf("unsupported output format %q (use .docx or .pdf)", ext)
+	if ext != ".docx" && ext != ".md" && ext != ".html" {
+		return fmt.Errorf("unsupported output format %q (use .docx, .md, or .html)", ext)
 	}
 
 	doc, err := fetchExportDoc(ctx, client, c.ID)
 	if err != nil {
+		return err
+	}
+	if err := gatherMedia(ctx, client, doc); err != nil {
 		return err
 	}
 
@@ -38,8 +69,18 @@ func (c *TicketsExportCmd) Run(ctx context.Context, client *Client) error {
 	switch ext {
 	case ".docx":
 		data, err = renderDocx(doc)
-	case ".pdf":
-		data, err = renderPDF(doc)
+	case ".md":
+		var assets []exportAsset
+		var merr error
+		data, assets, merr = renderMarkdown(doc, c.Out)
+		if merr != nil {
+			return merr
+		}
+		if werr := writeAssets(c.Out, assets); werr != nil {
+			return werr
+		}
+	case ".html":
+		data, err = renderHTML(doc)
 	}
 	if err != nil {
 		return err
@@ -49,6 +90,20 @@ func (c *TicketsExportCmd) Run(ctx context.Context, client *Client) error {
 		return fmt.Errorf("write %s: %w", c.Out, err)
 	}
 	fmt.Printf("Wrote %s\n", c.Out)
+	return nil
+}
+
+// writeAssets writes asset files (e.g. markdown images) next to the output.
+func writeAssets(outPath string, assets []exportAsset) error {
+	for _, a := range assets {
+		p := filepath.Join(filepath.Dir(outPath), a.Name)
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.Dir(p), err)
+		}
+		if err := os.WriteFile(p, a.Data, 0644); err != nil {
+			return fmt.Errorf("write %s: %w", p, err)
+		}
+	}
 	return nil
 }
 
@@ -65,7 +120,11 @@ func fetchExportDoc(ctx context.Context, client *Client, id int64) (*exportDoc, 
 		return nil, fmt.Errorf("parse ticket: %w", err)
 	}
 
-	convRaw, err := client.Get(ctx, fmt.Sprintf("tickets/%d/conversations", id), nil)
+	convRaw, err := client.Get(ctx, fmt.Sprintf("tickets/%d/conversations", id), url.Values{
+		"per_page":   {"100"},
+		"order_by":   {"created_at"},
+		"order_type": {"asc"},
+	})
 	if err != nil {
 		return nil, err
 	}

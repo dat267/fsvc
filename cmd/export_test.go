@@ -75,9 +75,9 @@ func TestTicketsExportCmd_Docx(t *testing.T) {
 	}
 }
 
-func TestTicketsExportCmd_PDF(t *testing.T) {
+func TestTicketsExportCmd_Markdown(t *testing.T) {
 	srv := testExportFixture(t)
-	out := filepath.Join(t.TempDir(), "ticket.pdf")
+	out := filepath.Join(t.TempDir(), "ticket.md")
 
 	err := (&TicketsExportCmd{ID: 10100, Out: out}).Run(context.Background(), newTestClient(srv.URL))
 	if err != nil {
@@ -88,8 +88,61 @@ func TestTicketsExportCmd_PDF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read output: %v", err)
 	}
-	if len(data) < 100 || !strings.HasPrefix(string(data[:5]), "%PDF") {
-		t.Errorf("expected PDF header, got %q", data[:min(20, len(data))])
+	md := string(data)
+	for _, want := range []string{
+		"# Ticket #10100 — Printer not working",
+		"Hello & hi",
+		"## Conversations",
+		"### 2100 (incoming, 2026-08-01T10:30:00Z)",
+		"Please fix the printer",
+		"### Nadia Rahman (outgoing, 2026-08-01T11:00:00Z)",
+		"Will do",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("expected %q in markdown, got:\n%s", want, md)
+		}
+	}
+	// HTML should be stripped.
+	if strings.Contains(md, "<p>") {
+		t.Errorf("expected HTML stripped from markdown, got:\n%s", md)
+	}
+}
+
+func TestTicketsExportCmd_MarkdownAssets(t *testing.T) {
+	srv := testMediaFixture(t)
+	dir := t.TempDir()
+	out := filepath.Join(dir, "ticket.md")
+
+	err := (&TicketsExportCmd{ID: 10100, Out: out}).Run(context.Background(), newTestClient(srv.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+	md := string(data)
+	if !strings.Contains(md, "![](assets/") {
+		t.Errorf("expected image reference in markdown, got:\n%s", md)
+	}
+
+	assetDir := filepath.Join(dir, "assets")
+	entries, err := os.ReadDir(assetDir)
+	if err != nil {
+		t.Fatalf("expected assets directory: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Errorf("expected 3 asset files, got %d", len(entries))
+	}
+	for _, e := range entries {
+		b, err := os.ReadFile(filepath.Join(assetDir, e.Name()))
+		if err != nil {
+			t.Fatalf("read asset: %v", err)
+		}
+		if !strings.HasPrefix(string(b), "\x89PNG") {
+			t.Errorf("asset %s: expected PNG bytes", e.Name())
+		}
 	}
 }
 
@@ -99,6 +152,27 @@ func TestTicketsExportCmd_UnsupportedExt(t *testing.T) {
 	err := (&TicketsExportCmd{ID: 10100, Out: out}).Run(context.Background(), newTestClient(srv.URL))
 	if err == nil || !strings.Contains(err.Error(), "unsupported output format") {
 		t.Errorf("expected unsupported format error, got %v", err)
+	}
+}
+
+func TestTicketsExportCmd_HTML(t *testing.T) {
+	srv := testExportFixture(t)
+	out := filepath.Join(t.TempDir(), "ticket.html")
+
+	err := (&TicketsExportCmd{ID: 10100, Out: out}).Run(context.Background(), newTestClient(srv.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+	md := string(data)
+	for _, want := range []string{"<h1>Ticket #10100 — Printer not working</h1>", "<h2>Conversations</h2>", "<h3>2100 (incoming, 2026-08-01T10:30:00Z)</h3>"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("expected %q in html, got:\n%s", want, md)
+		}
 	}
 }
 
