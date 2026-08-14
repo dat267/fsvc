@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -103,8 +104,28 @@ func walkAttachments(ctx context.Context, client *Client, doc *exportDoc, owner 
 	}
 }
 
-// Download fetches a raw URL on the same host as the API base, sending the
-// session cookie.
+// sameMediaHost reports whether host may serve media for an API at baseHost.
+// It allows the exact API host plus sibling hosts sharing its registrable
+// domain (e.g. acme.attachments.freshservice.com for acme.freshservice.com),
+// but rejects unrelated hosts. Hosts without a registrable domain (IPs, bare
+// names) require an exact match.
+func sameMediaHost(baseHost, host string) bool {
+	if baseHost == host {
+		return true
+	}
+	if net.ParseIP(baseHost) != nil || net.ParseIP(host) != nil {
+		return false
+	}
+	baseLabels := strings.Split(baseHost, ".")
+	if len(baseLabels) < 3 {
+		return false
+	}
+	registrable := strings.Join(baseLabels[len(baseLabels)-2:], ".")
+	return strings.HasSuffix(host, "."+registrable)
+}
+
+// Download fetches a raw URL on the same host (or registrable domain) as the
+// API base, sending the session cookie.
 func (c *Client) Download(ctx context.Context, rawURL string) ([]byte, error) {
 	base := c.BaseURL()
 	u, err := url.Parse(rawURL)
@@ -118,7 +139,7 @@ func (c *Client) Download(ctx context.Context, rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse base URL %q: %w", base, err)
 	}
-	if u.Host != baseURL.Host {
+	if !sameMediaHost(baseURL.Host, u.Host) {
 		return nil, fmt.Errorf("refusing to download off-host URL %q", rawURL)
 	}
 	return c.getRaw(ctx, rawURL)

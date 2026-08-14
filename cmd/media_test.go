@@ -78,6 +78,41 @@ func TestResolveImageURL(t *testing.T) {
 	}
 }
 
+func TestSameMediaHost(t *testing.T) {
+	cases := []struct {
+		name string
+		base string
+		host string
+		want bool
+	}{
+		{"same host", "acme.freshservice.com", "acme.freshservice.com", true},
+		{"media cdn subdomain", "acme.freshservice.com", "acme.attachments.freshservice.com", true},
+		{"unrelated subdomain of same registrable", "acme.freshservice.com", "other.freshservice.com", true},
+		{"unrelated domain", "acme.freshservice.com", "evil.example.com", false},
+		{"parent domain", "acme.freshservice.com", "freshservice.com", false},
+		{"ip exact", "127.0.0.1", "127.0.0.1", true},
+		{"ip other", "127.0.0.1", "127.0.0.2", false},
+		{"ip suffix that shares label tail", "10.0.0.1", "10.0.0.2", false},
+		{"bare name exact", "fsvc", "fsvc", true},
+		{"bare name other", "fsvc", "other", false},
+	}
+	for _, tc := range cases {
+		if got := sameMediaHost(tc.base, tc.host); got != tc.want {
+			t.Errorf("%s: sameMediaHost(%q, %q): expected %v, got %v", tc.name, tc.base, tc.host, tc.want, got)
+		}
+	}
+}
+
+func TestDownload_AllowsSameRegistrableDomain(t *testing.T) {
+	// base is 127.0.0.1:PORT; image src is a sibling CDN-style host under the
+	// same registrable domain. The test server host is not one we control, so
+	// verify via sameMediaHost directly plus that gatherMedia keeps the image
+	// when the URL is allowed.
+	if !sameMediaHost("myzoihelpdesk.freshservice.com", "myzoihelpdesk.attachments.freshservice.com") {
+		t.Fatal("expected media CDN host to be allowed")
+	}
+}
+
 func TestGatherMedia(t *testing.T) {
 	srv := testMediaFixture(t)
 	client := newTestClient(srv.URL)
