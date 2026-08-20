@@ -16,6 +16,7 @@ import (
 
 type TicketsCmdGroup struct {
 	List              TicketsListCmd              `cmd:"" help:"List tickets"`
+	Show              TicketsShowCmd              `cmd:"" help:"Show a ticket and its conversation trace as Markdown"`
 	Conversations     TicketsConvCmd              `cmd:"" help:"List conversations for a ticket"`
 	Export            TicketsExportCmd            `cmd:"" help:"Export a ticket to DOCX, Markdown, or HTML"`
 	Classify          TicketsClassifyCmd          `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
