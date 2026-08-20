@@ -34,6 +34,20 @@ func AddBusinessDays(t time.Time, n int) time.Time {
 	return t
 }
 
+// roundUpQuarterHour rounds t up to the next quarter-hour boundary (:00, :15,
+// :30, :45) in t's own location. Times already exactly on a boundary are
+// returned unchanged.
+func roundUpQuarterHour(t time.Time) time.Time {
+	h, m, s := t.Clock()
+	total := h*60 + m
+	if s != 0 || total%15 != 0 {
+		total = (total/15 + 1) * 15
+	}
+	// time.Date normalizes overflow (60 minutes, 24 hours) into the next
+	// hour/day, which handles rollover cases like 23:59:59 -> 00:00:00.
+	return time.Date(t.Year(), t.Month(), t.Day(), total/60, total%60, 0, 0, t.Location())
+}
+
 // BusinessDaysBetween returns the number of weekdays between from and to,
 // as a float. Weekends are skipped; partial start/end days count
 // fractionally.

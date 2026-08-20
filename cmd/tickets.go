@@ -451,7 +451,7 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *Client) erro
 		if t.CreatedAt.IsZero() {
 			return nil
 		}
-		created := t.CreatedAt.Format(time.RFC3339)
+		created := roundUpQuarterHour(t.CreatedAt).Format(time.RFC3339)
 		changes = append(changes, pendingChange{
 			id:    t.ID,
 			field: "planned_start_date",
@@ -478,7 +478,7 @@ type TicketsPushEndDatesCmd struct {
 
 func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error {
 	base := nowInTZ()
-	target := AddBusinessDays(base, c.Days).Format(time.RFC3339)
+	target := roundUpQuarterHour(AddBusinessDays(base, c.Days)).Format(time.RFC3339)
 
 	var changes []pendingChange
 	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {

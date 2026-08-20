@@ -341,7 +341,7 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_start_date":null,"created_at":"2026-08-01T12:00:00Z"},{"id":20,"planned_start_date":"2025-01-01T00:00:00Z","created_at":"2026-08-01T12:00:00Z"}],"meta":{"has_next":false}}`)
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_start_date":null,"created_at":"2026-08-01T12:07:30Z"},{"id":20,"planned_start_date":"2025-01-01T00:00:00Z","created_at":"2026-08-01T12:00:00Z"}],"meta":{"has_next":false}}`)
 	})
 	// Ticket 10: planned_start_date=null, created_at populated → fillable (PUT)
 	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
@@ -365,13 +365,13 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(out, "[planned_start_date] ticket 10: nil -> 2026-08-01T12:00:00Z") {
+	if !strings.Contains(out, "[planned_start_date] ticket 10: nil -> 2026-08-01T12:15:00Z") {
 		t.Errorf("expected preview line, got %q", out)
 	}
 	if len(putCalls) != 1 {
 		t.Fatalf("expected 1 PUT call, got %d", len(putCalls))
 	}
-	if string(putCalls[0].Body) != `{"planned_start_date":"2026-08-01T12:00:00Z"}` {
+	if string(putCalls[0].Body) != `{"planned_start_date":"2026-08-01T12:15:00Z"}` {
 		t.Errorf("unexpected PUT body: %q", putCalls[0].Body)
 	}
 	if !strings.Contains(out, "Done: 1 applied") {
@@ -380,7 +380,9 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 }
 
 func TestTicketsPushEndDatesCmd(t *testing.T) {
-	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
+	// Tuesday noon+offset so now+3 business days (Friday) is mid-quarter and
+	// must be rounded up to 12:15:00.
+	setNow(t, time.Date(2026, 8, 4, 12, 7, 30, 0, time.UTC))
 	var putCalls []struct {
 		Path string
 		Body []byte
@@ -418,7 +420,7 @@ func TestTicketsPushEndDatesCmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsPushEndDatesCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -472,7 +474,7 @@ func TestTicketsPushEndDatesCmd_WithinHours(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsPushEndDatesCmd{Yes: true, PerPage: 100, WithinHours: 24}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, PerPage: 100, WithinHours: 24}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -489,6 +491,11 @@ func TestTicketsPushEndDatesCmd_WithinHours(t *testing.T) {
 	}
 	if len(putCalls) != 2 {
 		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
+	}
+	for _, p := range putCalls {
+		if string(p.Body) != `{"planned_end_date":"2026-08-07T12:00:00Z"}` {
+			t.Errorf("unexpected PUT body: %q", p.Body)
+		}
 	}
 }
 

@@ -20,6 +20,34 @@ func TestNowInTZAt(t *testing.T) {
 	}
 }
 
+func TestRoundUpQuarterHour(t *testing.T) {
+	utc := time.UTC
+	kolkata, _ := time.LoadLocation("Asia/Kolkata")
+
+	tests := []struct {
+		name string
+		in   time.Time
+		want time.Time
+	}{
+		{"exact boundary unchanged", time.Date(2026, 8, 4, 12, 15, 0, 0, utc), time.Date(2026, 8, 4, 12, 15, 0, 0, utc)},
+		{"mid-quarter rounds up", time.Date(2026, 8, 4, 12, 7, 30, 0, utc), time.Date(2026, 8, 4, 12, 15, 0, 0, utc)},
+		{"boundary with seconds rounds up", time.Date(2026, 8, 4, 12, 15, 30, 0, utc), time.Date(2026, 8, 4, 12, 30, 0, 0, utc)},
+		{"hour rollover", time.Date(2026, 8, 4, 12, 59, 59, 0, utc), time.Date(2026, 8, 4, 13, 0, 0, 0, utc)},
+		{"day rollover", time.Date(2026, 8, 4, 23, 59, 59, 0, utc), time.Date(2026, 8, 5, 0, 0, 0, 0, utc)},
+		{"tz offset preserved", time.Date(2026, 8, 4, 12, 7, 30, 0, kolkata), time.Date(2026, 8, 4, 12, 15, 0, 0, kolkata)},
+		{"top of hour unchanged", time.Date(2026, 8, 4, 9, 0, 0, 0, utc), time.Date(2026, 8, 4, 9, 0, 0, 0, utc)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := roundUpQuarterHour(tt.in)
+			if !got.Equal(tt.want) {
+				t.Errorf("roundUpQuarterHour(%v) = %v, want %v", tt.in.Format(time.RFC3339), got.Format(time.RFC3339), tt.want.Format(time.RFC3339))
+			}
+		})
+	}
+}
+
 func TestBusinessDaysBetween(t *testing.T) {
 	mon := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)      // Monday noon
 	fri := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)      // Friday noon
