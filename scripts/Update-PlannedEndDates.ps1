@@ -22,10 +22,11 @@
 #   - "Business days" = Mon-Fri, your server's UTC clock. No holidays, no
 #     timezone awareness beyond usage of UTC.
 #
-# SCOPE: only touches tickets whose planned_end_date is null or in the past.
-# New dates are rounded up to the next quarter hour so they don't look
-# machine-generated. This is a bulk operation - review the preview list before
-# confirming.
+# SCOPE: touches tickets whose planned_end_date is null, in the past, OR (when
+# $WithinDays > 0) within the next $WithinDays days. Future dates beyond the
+# window are left alone. New dates are rounded up to the next quarter hour so
+# they don't look machine-generated. This is a bulk operation - review the
+# preview list before confirming.
 #
 # Usage:
 #   Fill in the CONFIG variables below, then run:
@@ -40,6 +41,8 @@ $SessionCookie = "PASTE_YOUR_itildesk_session_VALUE_HERE"
 $CsrfToken     = "PASTE_YOUR_X-CSRF-Token_VALUE_HERE"   # required for PUT
 
 $BusinessDays = 3                        # business days from now to set the end date
+
+$WithinDays  = 7                         # also bump tickets due within this many days (0 = off)
 
 # query_hash filter (JSON array of conditions). Default: self-assigned
 # unresolved tickets, same as the CLI's push-end-dates command.
@@ -180,13 +183,16 @@ Write-Host ("Scanned {0} tickets" -f $tickets.Count)
 # Decide changes
 # ---------------------------------------------------------------------------
 
+$withinCutoff = $now.AddDays($WithinDays)   # 0 disables the future-date window
+
 $changes = @()
 foreach ($t in $tickets) {
+    $at = [datetime]::MinValue
     $cur = $t.planned_end_date
-    if ($cur) {
-        $at = [datetime]::MinValue
-        if ([datetime]::TryParse($cur, [ref]$at) -and $at -gt $now) {
-            continue   # already in the future, leave alone
+    if ($cur -and [datetime]::TryParse($cur, [ref]$at)) {
+        # Has a due date. Leave alone unless it's past or within the window.
+        if ($at -gt $now -and ($WithinDays -le 0 -or $at -gt $withinCutoff)) {
+            continue   # due beyond the window - leave alone
         }
     }
     $changes += [pscustomobject]@{
