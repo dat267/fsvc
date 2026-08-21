@@ -61,12 +61,30 @@ $BaseUrl = "https://$Subdomain.freshservice.com"
 
 $script:rotatedSession = $SessionCookie
 
+# Builds a query string (without leading ?) from a hashtable of params.
+function Build-QueryString {
+    param([hashtable]$Query)
+    if (-not $Query -or $Query.Count -eq 0) {
+        return ""
+    }
+    return ($Query.GetEnumerator() | ForEach-Object { "{0}={1}" -f $_.Key, [uri]::EscapeDataString([string]$_.Value) }) -join "&"
+}
+
+# Appends a query string to a path as ?key=value&... . Uses -f rather than
+# "$Path?$qs" because `?` is a legal character in PowerShell variable names
+# and "$Path?$qs" would swallow the ? (and the path) into an undefined
+# variable - producing a broken URL like /api/_/per_page=100&...
+function Append-Query {
+    param([string]$Path, [string]$QueryString)
+    if ($QueryString) {
+        return "{0}?{1}" -f $Path, $QueryString
+    }
+    return $Path
+}
+
 function Invoke-FSGet {
     param([string]$Path, [hashtable]$Query)
-    if ($Query) {
-        $qs = ($Query.GetEnumerator() | ForEach-Object { "{0}={1}" -f $_.Key, [uri]::EscapeDataString([string]$_.Value) }) -join "&"
-        $Path = "$Path?$qs"
-    }
+    $Path = Append-Query -Path $Path -QueryString (Build-QueryString -Query $Query)
     $getHeaders = @{
         "Accept" = "application/json"
         "Cookie" = "_itildesk_session=$script:rotatedSession"

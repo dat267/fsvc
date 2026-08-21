@@ -50,6 +50,27 @@ Write-Host "== Should-Bump (WithinDays=0, window off) ==" -ForegroundColor Cyan
 Assert-Equal (Should-Bump -PlannedEndDate "2026-08-08T10:00:00Z" -Now $now -WithinDays 0) $false "future left alone when window off"
 Assert-Equal (Should-Bump -PlannedEndDate "2026-08-01T10:00:00Z" -Now $now -WithinDays 0) $true "past bumps when window off"
 
+function Assert-True {
+    param([bool]$Actual, [string]$Label)
+    if (-not $Actual) {
+        Write-Host ("FAIL: {0}" -f $Label) -ForegroundColor Red
+        $script:failures++
+    } else {
+        Write-Host ("ok: {0}" -f $Label) -ForegroundColor DarkGray
+    }
+}
+
+Write-Host "== Append-Query / Build-QueryString (URL construction) ==" -ForegroundColor Cyan
+Assert-Equal (Append-Query -Path "tickets" -QueryString "per_page=100") "tickets?per_page=100" "path + query keeps both"
+Assert-Equal (Append-Query -Path "tickets" -QueryString "") "tickets" "empty query leaves path intact"
+$qs2 = Build-QueryString -Query @{ a = "1"; b = "x y" }
+Assert-True (($qs2 -match "a=1") -and ($qs2 -match "b=x%20y")) "values are escaped (x%20y)"
+
+$qs = Build-QueryString -Query @{ per_page = 100; query_hash = '{"k":"v"}' }
+Assert-True ($qs -match "^per_page=100&query_hash=" -or $qs -match "^query_hash=.*&per_page=100$") "Build-QueryString joins and escapes params"
+# The critical regression: "tickets" must survive the ?-append (the 404 bug).
+Assert-True ((Append-Query -Path "tickets" -QueryString $qs) -match "^tickets\?") "tickets? kept in final URL"
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red
