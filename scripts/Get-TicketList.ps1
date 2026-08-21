@@ -10,8 +10,8 @@
 #
 # WHAT IT ASSUMES:
 #   - Auth is a session cookie (_itildesk_session) from your own browser
-#     DevTools. It expires; re-copy it when it stops working. Server-side
-#     rotation of that cookie is handled within a single run.
+#     DevTools. It expires; re-copy it when it stops working. The same token is
+#     used for every request in the run.
 #   - Exactly one of $FilterId / $QueryHash must be set. $FilterId passes
 #     filter=<id> directly to the tickets endpoint; $QueryHash passes
 #     query_hash=<json>.
@@ -51,8 +51,6 @@ $Properties   = @("id", "subject", "status", "priority", "requester_name", "crea
 
 $BaseUrl = "https://$Subdomain.freshservice.com"
 
-$script:rotatedSession = $SessionCookie
-
 # Builds a query string (without leading ?) from a hashtable of params.
 function Build-QueryString {
     param([hashtable]$Query)
@@ -79,23 +77,10 @@ function Invoke-FSGet {
     $Path = Append-Query -Path $Path -QueryString (Build-QueryString -Query $Query)
     $getHeaders = @{
         "Accept" = "application/json"
-        "Cookie" = "_itildesk_session=$script:rotatedSession"
+        "Cookie" = "_itildesk_session=$SessionCookie"
     }
     $resp = Invoke-WebRequest -Uri "$BaseUrl/api/_/$Path" -Headers $getHeaders -UseBasicParsing
-    Update-SessionCookie $resp
     return $resp.Content
-}
-
-# The private API rotates _itildesk_session via Set-Cookie; capture it so
-# subsequent requests in this run stay authenticated.
-function Update-SessionCookie {
-    param($Response)
-    $setCookie = $Response.Headers["Set-Cookie"]
-    if ($setCookie) {
-        if ($setCookie -match "_itildesk_session=([^;]+)") {
-            $script:rotatedSession = $Matches[1]
-        }
-    }
 }
 
 # Allow dot-sourcing: `path . Get-TicketList.ps1` defines the helper functions

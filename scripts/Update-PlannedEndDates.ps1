@@ -10,8 +10,8 @@
 #
 # WHAT IT ASSUMES:
 #   - Auth is a session cookie (_itildesk_session) taken from your own browser
-#     DevTools. It expires; re-copy it when it stops working. Server-side
-#     rotation of that cookie is handled within a single run.
+#     DevTools. It expires; re-copy it when it stops working. The same token is
+#     used for every request in the run.
 #   - Writes require an X-CSRF-Token (also from DevTools). Without it the PUTs
 #     fail with 401. There is no way around this.
 #   - The default $Filter below was user-confirmed on one specific instance.
@@ -59,8 +59,6 @@ $Confirm  = $true                        # prompt before applying (set $false to
 
 $BaseUrl = "https://$Subdomain.freshservice.com"
 
-$script:rotatedSession = $SessionCookie
-
 # Builds a query string (without leading ?) from a hashtable of params.
 function Build-QueryString {
     param([hashtable]$Query)
@@ -87,10 +85,9 @@ function Invoke-FSGet {
     $Path = Append-Query -Path $Path -QueryString (Build-QueryString -Query $Query)
     $getHeaders = @{
         "Accept" = "application/json"
-        "Cookie" = "_itildesk_session=$script:rotatedSession"
+        "Cookie" = "_itildesk_session=$SessionCookie"
     }
     $resp = Invoke-WebRequest -Uri "$BaseUrl/api/_/$Path" -Headers $getHeaders -UseBasicParsing
-    Update-SessionCookie $resp
     return $resp.Content
 }
 
@@ -98,26 +95,13 @@ function Invoke-FSPut {
     param([string]$Path, [hashtable]$Body)
     $putHeaders = @{
         "Accept"        = "application/json"
-        "Cookie"        = "_itildesk_session=$script:rotatedSession"
+        "Cookie"        = "_itildesk_session=$SessionCookie"
         "Content-Type"  = "application/json; charset=utf-8"
         "X-CSRF-Token"  = $CsrfToken
     }
     $json = $Body | ConvertTo-Json -Compress
     $resp = Invoke-WebRequest -Uri "$BaseUrl/api/_/$Path" -Method Put -Headers $putHeaders -Body $json -UseBasicParsing
-    Update-SessionCookie $resp
     return $resp.Content
-}
-
-# The private API rotates _itildesk_session via Set-Cookie; capture it so
-# subsequent requests in this run stay authenticated.
-function Update-SessionCookie {
-    param($Response)
-    $setCookie = $Response.Headers["Set-Cookie"]
-    if ($setCookie) {
-        if ($setCookie -match "_itildesk_session=([^;]+)") {
-            $script:rotatedSession = $Matches[1]
-        }
-    }
 }
 
 function Add-BusinessDays {
