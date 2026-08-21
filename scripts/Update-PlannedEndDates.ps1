@@ -22,11 +22,11 @@
 #   - "Business days" = Mon-Fri, your server's UTC clock. No holidays, no
 #     timezone awareness beyond usage of UTC.
 #
-# SCOPE: touches tickets whose planned_end_date is null, in the past, OR (when
-# $WithinDays > 0) within the next $WithinDays days. Future dates beyond the
-# window are left alone. New dates are rounded up to the next quarter hour so
-# they don't look machine-generated. This is a bulk operation - review the
-# preview list before confirming.
+# SCOPE: by default only touches tickets whose planned_end_date is null or in
+# the past. When $WithinDays > 0 it also touches tickets due within the next
+# $WithinDays days; future dates beyond the window are left alone. New dates
+# are rounded up to the next quarter hour so they don't look machine-generated.
+# This is a bulk operation - review the preview list before confirming.
 #
 # Usage:
 #   Fill in the CONFIG variables below, then run:
@@ -42,7 +42,7 @@ $CsrfToken     = "PASTE_YOUR_X-CSRF-Token_VALUE_HERE"   # required for PUT
 
 $BusinessDays = 3                        # business days from now to set the end date
 
-$WithinDays  = 7                         # also bump tickets due within this many days (0 = off)
+$WithinDays  = 0                         # also bump tickets due within this many days (0 = off; keep off unless intended)
 
 # query_hash filter (JSON array of conditions). Default: self-assigned
 # unresolved tickets, same as the CLI's push-end-dates command.
