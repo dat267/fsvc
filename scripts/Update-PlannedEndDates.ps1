@@ -131,6 +131,32 @@ function Round-Up-QuarterHour {
     return $base.AddMinutes($total)
 }
 
+# Returns $true when a ticket's planned_end_date should be bumped: the date is
+# null, unparseable, in the past, or within the next $WithinDays days (when
+# WithinDays > 0). Future dates beyond the window are left alone. Now is the
+# reference time; WithinDays is exposed so tests can drive the logic.
+function Should-Bump {
+    param(
+        [AllowNull()][string]$PlannedEndDate,
+        [datetime]$Now,
+        [int]$WithinDays
+    )
+    $at = [datetime]::MinValue
+    if ($PlannedEndDate -and [datetime]::TryParse($PlannedEndDate, [ref]$at)) {
+        $cutoff = $Now.AddDays($WithinDays)
+        # Has a due date. Leave alone unless it's past or within the window.
+        if ($at -gt $Now -and ($WithinDays -le 0 -or $at -gt $cutoff)) {
+            return $false   # due beyond the window
+        }
+    }
+    return $true
+}
+
+# Allow dot-sourcing: `path . Update-PlannedEndDates.ps1` defines the helper
+# functions (Add-BusinessDays, Round-Up-QuarterHour, Should-Bump, ...) without
+# running the script body. Run it directly to actually bump dates.
+if ($MyInvocation.InvocationName -eq '.') { return }
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -183,21 +209,14 @@ Write-Host ("Scanned {0} tickets" -f $tickets.Count)
 # Decide changes
 # ---------------------------------------------------------------------------
 
-$withinCutoff = $now.AddDays($WithinDays)   # 0 disables the future-date window
-
 $changes = @()
 foreach ($t in $tickets) {
-    $at = [datetime]::MinValue
-    $cur = $t.planned_end_date
-    if ($cur -and [datetime]::TryParse($cur, [ref]$at)) {
-        # Has a due date. Leave alone unless it's past or within the window.
-        if ($at -gt $now -and ($WithinDays -le 0 -or $at -gt $withinCutoff)) {
-            continue   # due beyond the window - leave alone
-        }
+    if (-not (Should-Bump -PlannedEndDate $t.planned_end_date -Now $now -WithinDays $WithinDays)) {
+        continue
     }
     $changes += [pscustomobject]@{
         Id   = $t.id
-        From = $cur
+        From = $t.planned_end_date
         To   = $targetIso
     }
 }
