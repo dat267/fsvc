@@ -3,37 +3,47 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
-// TicketsShowCmd prints a ticket and its full conversation trace as Markdown.
+// TicketsShowCmd prints one or more tickets and their full conversation
+// traces as Markdown.
 type TicketsShowCmd struct {
-	ID int64 `arg:"" help:"Ticket ID"`
+	IDs []int64 `arg:"" help:"Ticket ID(s)"`
 }
 
 func (c *TicketsShowCmd) Run(ctx context.Context, client *Client) error {
-	doc, err := fetchExportDoc(ctx, client, c.ID)
-	if err != nil {
-		return err
-	}
-	if err := gatherMedia(ctx, client, doc); err != nil {
-		return err
-	}
+	for i, id := range c.IDs {
+		if i > 0 {
+			fmt.Println("\n---")
+		}
+		doc, err := fetchExportDoc(ctx, client, id)
+		if err != nil {
+			return err
+		}
+		if err := gatherMedia(ctx, client, doc); err != nil {
+			return err
+		}
 
-	data, _, err := renderTicketMarkdown(doc, c.ID)
-	if err != nil {
-		return err
+		data, _, err := renderTicketMarkdown(doc, id)
+		if err != nil {
+			return err
+		}
+		fmt.Print(string(data))
 	}
-	fmt.Println(string(data))
 	return nil
 }
+
+// urgencyImpactName maps numeric urgency/impact values to their display names.
+var urgencyImpactName = map[int64]string{1: "Low", 2: "Medium", 3: "High"}
 
 // ticketMetaFields lists the metadata rows shown at the top of a ticket view.
 var ticketMetaFields = []struct{ label, key, nameKey string }{
 	{"Status", "status", "status_name"},
 	{"Priority", "priority", "priority_name"},
-	{"Urgency", "urgency", ""},
-	{"Impact", "impact", ""},
+	{"Urgency", "urgency", "urgency_name"},
+	{"Impact", "impact", "impact_name"},
 	{"Group", "group_id", "group_name"},
 	{"Requester", "requester_id", "requester_name"},
 	{"Responder", "responder_id", "responder_name"},
@@ -58,13 +68,25 @@ func renderTicketMarkdown(doc *exportDoc, id int64) ([]byte, []exportAsset, erro
 	}
 	fmt.Fprintf(&b, "# Ticket #%s — %s\n\n", display, subject)
 
-	b.WriteString("| Field | Value\n|---|---\n")
+	maxLabel := 0
+	for _, f := range ticketMetaFields {
+		if len(f.label) > maxLabel {
+			maxLabel = len(f.label)
+		}
+	}
 	for _, f := range ticketMetaFields {
 		val := exportField(doc.Ticket, f.nameKey)
 		if val == "" {
 			val = exportField(doc.Ticket, f.key)
 		}
-		fmt.Fprintf(&b, "| %s | %s\n", f.label, val)
+		if val != "" && (f.key == "urgency" || f.key == "impact") {
+			if n, err := strconv.ParseInt(val, 10, 64); err == nil {
+				if name, ok := urgencyImpactName[n]; ok {
+					val = name
+				}
+			}
+		}
+		fmt.Fprintf(&b, "%-*s : %s\n", maxLabel, f.label, val)
 	}
 	b.WriteString("\n")
 

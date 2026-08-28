@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,15 @@ func TestTicketsShowCmd(t *testing.T) {
 		_, _ = w.Write([]byte(convBody))
 	})
 	mux.HandleFunc("/api/_/tickets/10100", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(ticketBody))
+	})
+	// Also serve a second ticket for multi-ID testing.
+	mux.HandleFunc("/api/_/tickets/10101/conversations", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(convBody))
+	})
+	mux.HandleFunc("/api/_/tickets/10101", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(ticketBody))
 	})
@@ -47,7 +57,7 @@ func TestTicketsShowCmd(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		err := (&TicketsShowCmd{ID: 10100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsShowCmd{IDs: []int64{10100}}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -55,9 +65,9 @@ func TestTicketsShowCmd(t *testing.T) {
 
 	for _, want := range []string{
 		"# Ticket #10100 — Printer not working",
-		"| Status", "Open", "| Priority", "Medium", "| Requester", "Omar Saleh",
-		"| Responder", "Nadia Rahman",
-		"| Created", "2026-08-01T10:00:00Z",
+		"Status     : Open", "Priority   : Medium", "Requester  : Omar Saleh",
+		"Responder  : Nadia Rahman", "Urgency    : Low", "Impact     : Low",
+		"Created    : 2026-08-01T10:00:00Z",
 		"Printer jammed",
 		"## Attachments", "photo.png", "printer.png",
 		"## Conversations",
@@ -80,5 +90,43 @@ func TestTicketsShowCmd(t *testing.T) {
 
 	if strings.Contains(out, "<p>") {
 		t.Errorf("expected HTML stripped, got:\n%s", out)
+	}
+}
+
+func TestTicketsShowCmd_MultiID(t *testing.T) {
+	convBody := `{"conversations":[],"meta":{"count":0}}`
+
+	mux := http.NewServeMux()
+	for _, id := range []string{"10100", "10101"} {
+		id := id
+		path := "/api/_/tickets/" + id
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			body := fmt.Sprintf(`{"ticket":{"id":%[1]s,"display_id":%[1]s,"subject":"Ticket %[1]s","status":2,"status_name":"Open","priority":2,"priority_name":"Medium","urgency":1,"impact":1,"group_id":4001,"group_name":"Support","requester_id":5001,"requester_name":"Omar Saleh","responder_id":3100,"responder_name":"Nadia Rahman","department_id":5100,"department_name":"IT","created_at":"2026-08-01T10:00:00Z","updated_at":"2026-08-02T09:00:00Z","description_text":"Body for %[1]s","attachments":[]}}`, id)
+			_, _ = w.Write([]byte(body))
+		})
+		mux.HandleFunc(path+"/conversations", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(convBody))
+		})
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	out := captureStdout(t, func() {
+		err := (&TicketsShowCmd{IDs: []int64{10100, 10101}}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "# Ticket #10100") {
+		t.Errorf("expected first ticket, got:\n%s", out)
+	}
+	if !strings.Contains(out, "# Ticket #10101") {
+		t.Errorf("expected second ticket, got:\n%s", out)
+	}
+	if !strings.Contains(out, "---") {
+		t.Errorf("expected separator between tickets, got:\n%s", out)
 	}
 }
