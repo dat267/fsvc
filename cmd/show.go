@@ -38,6 +38,10 @@ func (c *TicketsShowCmd) Run(ctx context.Context, client *Client) error {
 // urgencyImpactName maps numeric urgency/impact values to their display names.
 var urgencyImpactName = map[int64]string{1: "Low", 2: "Medium", 3: "High"}
 
+// priorityName maps numeric priority values to their display names.
+// Freshservice uses 4 priority levels: 1=Low, 2=Medium, 3=High, 4=Urgent.
+var priorityName = map[int64]string{1: "Low", 2: "Medium", 3: "High", 4: "Urgent"}
+
 // ticketMetaFields lists the metadata rows shown at the top of a ticket view.
 var ticketMetaFields = []struct{ label, key, nameKey string }{
 	{"Status", "status", "status_name"},
@@ -79,10 +83,17 @@ func renderTicketMarkdown(doc *exportDoc, id int64) ([]byte, []exportAsset, erro
 		if val == "" {
 			val = exportField(doc.Ticket, f.key)
 		}
-		if val != "" && (f.key == "urgency" || f.key == "impact") {
+		if val != "" {
 			if n, err := strconv.ParseInt(val, 10, 64); err == nil {
-				if name, ok := urgencyImpactName[n]; ok {
-					val = name
+				switch f.key {
+				case "urgency", "impact":
+					if name, ok := urgencyImpactName[n]; ok {
+						val = name
+					}
+				case "priority":
+					if name, ok := priorityName[n]; ok {
+						val = name
+					}
 				}
 			}
 		}
