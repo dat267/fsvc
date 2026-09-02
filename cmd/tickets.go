@@ -473,13 +473,18 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *Client) erro
 type TicketsPushEndDatesCmd struct {
 	Yes         bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
 	Days        int  `arg:"" help:"Business days from now to set as planned end date" default:"3"`
+	EndHour     int  `help:"Preferred hour (0-23) for the target date; default uses current time" default:"-1"`
 	WithinHours int  `help:"Also push planned_end_date when it falls within this many hours of now (0 = only nil/past dates)"`
 	PerPage     int  `help:"Tickets per page" default:"100"`
 }
 
 func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error {
 	base := nowInTZ()
-	target := roundUpQuarterHour(AddBusinessDays(base, c.Days)).Format(time.RFC3339)
+	endDate := AddBusinessDays(base, c.Days)
+	if c.EndHour >= 0 {
+		endDate = time.Date(endDate.Year(), endDate.Month(), endDate.Day(), c.EndHour, 0, 0, 0, endDate.Location())
+	}
+	target := roundUpQuarterHour(endDate).Format(time.RFC3339)
 
 	var changes []pendingChange
 	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
