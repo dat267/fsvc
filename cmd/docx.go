@@ -158,7 +158,7 @@ func imageEmu(data []byte) (int64, int64) {
 	}
 	maxW := 6.5 * 914400 // 6.5in in EMU
 	scale := 1.0
-	if w := float64(cfg.Width); w > 0 && w > 6.5 {
+	if w := float64(cfg.Width); w > 6.5 {
 		scale = maxW / (w * 914400)
 	}
 	return int64(float64(cfg.Width) * 914400 * scale), int64(float64(cfg.Height) * 914400 * scale)

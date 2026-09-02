@@ -2,14 +2,16 @@ package cmd
 
 import (
 	"fmt"
-	"runtime/debug"
 )
 
 func init() {
 	SetAppName("fsvc")
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		Version = info.Main.Version
-	}
+}
+
+// SetVersion overrides the default version string. Called from main() with
+// the ldflags-injected version value.
+func SetVersion(v string) {
+	Version = v
 }
 
 // CLI is the root CLI struct containing all subcommand groups.

@@ -12,6 +12,6 @@ import (
 var version = "dev"
 
 func main() {
-	_ = version
+	cmd.SetVersion(version)
 	cmd.Execute(context.Background())
 }

@@ -47,7 +47,6 @@ fsvc tickets sync-urgency-impact -y                    # set minimal urgency+imp
 ```
 
 - Config lives at `~/.config/fsvc/fsvc.json` (or set `--subdomain`/`--itildesk-session` flags per invocation)
-- The session rotates automatically — the CLI captures the rotated `_itildesk_session` from `Set-Cookie` on each response
 - Use `--time-zone Europe/London` for accurate business-day math on `classify` and `push-end-dates`
 - Point at a mock server with `--base-url http://127.0.0.1:PORT` for safe testing
 

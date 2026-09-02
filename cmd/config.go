@@ -83,12 +83,23 @@ func (cmd *ConfigSetCmd) Run(app *App) error {
 	}
 
 	var val any = cmd.Value
-	if cmd.Value == "true" {
+	switch {
+	case cmd.Value == "true":
 		val = true
-	} else if cmd.Value == "false" {
+	case cmd.Value == "false":
 		val = false
-	} else if n, err := strconv.ParseFloat(cmd.Value, 64); err == nil {
-		val = n // Handles both integers and floats
+	case cmd.Value == "null":
+		val = nil
+	case strings.Contains(cmd.Value, "."):
+		if n, err := strconv.ParseFloat(cmd.Value, 64); err == nil {
+			val = n
+		}
+	default:
+		if n, err := strconv.ParseInt(cmd.Value, 10, 64); err == nil {
+			val = n
+		} else if n, err := strconv.ParseFloat(cmd.Value, 64); err == nil {
+			val = n
+		}
 	}
 
 	keys := strings.Split(cmd.Key, ".")
