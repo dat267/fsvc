@@ -126,7 +126,7 @@ func renderTicketMarkdown(doc *exportDoc, id int64) ([]byte, []exportAsset, erro
 		fmt.Fprintf(&b, "%s\n\n", desc)
 	}
 	for _, img := range imagesFor(doc.Images, "ticket") {
-		b.WriteString(markdownImage("show", img))
+		b.WriteString(markdownImage(img))
 		b.WriteString("\n")
 	}
 
@@ -140,13 +140,13 @@ func renderTicketMarkdown(doc *exportDoc, id int64) ([]byte, []exportAsset, erro
 	for _, conv := range doc.Conversations {
 		writeMarkdownConversation(&b, conv)
 		for _, img := range imagesFor(doc.Images, "conv-"+conv.ID) {
-			b.WriteString(markdownImage("show", img))
+			b.WriteString(markdownImage(img))
 			b.WriteString("\n")
 		}
 	}
 
 	for _, img := range doc.Images {
-		assets = append(assets, exportAsset{Name: assetRelPath("show", img), Data: img.Data})
+		assets = append(assets, exportAsset{Name: assetRelPath(img), Data: img.Data})
 	}
 
 	return []byte(b.String()), assets, nil

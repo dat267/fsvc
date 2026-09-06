@@ -6,10 +6,9 @@ import (
 	"strings"
 )
 
-// renderMarkdown produces a Markdown document containing the ticket, writing
-// images to assets/ alongside outPath and returning both the document and the
-// asset files to write.
-func renderMarkdown(doc *exportDoc, outPath string) ([]byte, []exportAsset, error) {
+// renderMarkdown produces a Markdown document containing the ticket and
+// returns both the document and the asset files to write alongside it.
+func renderMarkdown(doc *exportDoc) ([]byte, []exportAsset, error) {
 	var b strings.Builder
 
 	subject := doc.Subject
@@ -20,7 +19,7 @@ func renderMarkdown(doc *exportDoc, outPath string) ([]byte, []exportAsset, erro
 		fmt.Fprintf(&b, "%s\n\n", desc)
 	}
 	for _, img := range imagesFor(doc.Images, "ticket") {
-		b.WriteString(markdownImage(outPath, img))
+		b.WriteString(markdownImage(img))
 		b.WriteString("\n")
 	}
 	writeMarkdownAttachments(&b, doc.Attachments)
@@ -33,13 +32,13 @@ func renderMarkdown(doc *exportDoc, outPath string) ([]byte, []exportAsset, erro
 	for _, conv := range doc.Conversations {
 		writeMarkdownConversation(&b, conv)
 		for _, img := range imagesFor(doc.Images, "conv-"+conv.ID) {
-			b.WriteString(markdownImage(outPath, img))
+			b.WriteString(markdownImage(img))
 			b.WriteString("\n")
 		}
 	}
 
 	for _, img := range doc.Images {
-		assets = append(assets, exportAsset{Name: assetRelPath(outPath, img), Data: img.Data})
+		assets = append(assets, exportAsset{Name: assetRelPath(img), Data: img.Data})
 	}
 
 	return []byte(b.String()), assets, nil
@@ -61,7 +60,7 @@ func writeMarkdownAttachments(b *strings.Builder, atts []exportAttachment) {
 }
 
 // assetRelPath is the path referenced in the markdown, relative to the .md file.
-func assetRelPath(outPath string, img exportImage) string {
+func assetRelPath(img exportImage) string {
 	name := sanitizeID(img.Name)
 	if name == "" {
 		name = sanitizeID(img.ID)
@@ -73,8 +72,8 @@ func assetRelPath(outPath string, img exportImage) string {
 	return filepath.Join("assets", name)
 }
 
-func markdownImage(outPath string, img exportImage) string {
-	return "![](" + assetRelPath(outPath, img) + ")"
+func markdownImage(img exportImage) string {
+	return "![](" + assetRelPath(img) + ")"
 }
 
 func writeMarkdownConversation(b *strings.Builder, conv conversationDoc) {

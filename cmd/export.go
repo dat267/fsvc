@@ -88,7 +88,7 @@ func (c *TicketsExportCmd) Run(ctx context.Context, client *Client) error {
 	case ".md":
 		var assets []exportAsset
 		var merr error
-		data, assets, merr = renderMarkdown(doc, c.Out)
+		data, assets, merr = renderMarkdown(doc)
 		if merr != nil {
 			return merr
 		}

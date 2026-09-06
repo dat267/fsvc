@@ -122,7 +122,7 @@ func goldenDoc() *exportDoc {
 }
 
 func TestGoldenMarkdownExport(t *testing.T) {
-	got, _, err := renderMarkdown(goldenDoc(), "ticket.md")
+	got, _, err := renderMarkdown(goldenDoc())
 	if err != nil {
 		t.Fatalf("renderMarkdown: %v", err)
 	}

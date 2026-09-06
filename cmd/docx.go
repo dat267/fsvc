@@ -61,7 +61,9 @@ func writeDocxHeading(b *strings.Builder, text string, level int) {
 	if level == 2 {
 		style = "Heading2"
 	}
-	b.WriteString(`<w:p><w:pPr><w:pStyle w:val="` + style + `"/></w:pPr><w:r><w:t>`)
+	b.WriteString(`<w:p><w:pPr><w:pStyle w:val="`)
+	b.WriteString(style)
+	b.WriteString(`"/></w:pPr><w:r><w:t>`)
 	xmlEscape(b, text)
 	b.WriteString(`</w:t></w:r></w:p>`)
 }
