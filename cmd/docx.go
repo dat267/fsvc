@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"mime"
+	"sort"
 	"strings"
 )
 
@@ -236,12 +237,19 @@ xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
 		"word/document.xml":            documentXML,
 	}
 
-	for name, content := range files {
+	// Deterministic output: write entries in sorted name order instead of
+	// random map iteration order.
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		fw, err := zw.Create(name)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := fw.Write([]byte(content)); err != nil {
+		if _, err := fw.Write([]byte(files[name])); err != nil {
 			return nil, err
 		}
 	}

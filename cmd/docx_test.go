@@ -109,3 +109,32 @@ func TestTicketsExportCmd_DocxWithImages(t *testing.T) {
 		t.Error("expected word/media/ entries in exported docx")
 	}
 }
+
+// TestRenderDocx_Deterministic pins reproducible builds: identical input must
+// produce byte-identical docx output (a prerequisite for golden testing).
+func TestRenderDocx_Deterministic(t *testing.T) {
+	doc := &exportDoc{
+		Subject:   "Printer",
+		DisplayID: "10100",
+		Conversations: []conversationDoc{
+			{ID: "1", Author: "2100", Incoming: true, At: "2026-08-01T10:30:00Z", BodyText: "<p>See</p>"},
+		},
+		Images: []exportImage{
+			{ID: "a.png", Data: pngSig, Mime: "image/png", Name: "a.png", Owner: "ticket"},
+			{ID: "b.png", Data: pngSig, Mime: "image/png", Name: "b.png", Owner: "conv-1"},
+		},
+	}
+	first, err := renderDocx(doc)
+	if err != nil {
+		t.Fatalf("renderDocx: %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		again, err := renderDocx(doc)
+		if err != nil {
+			t.Fatalf("renderDocx: %v", err)
+		}
+		if !bytes.Equal(first, again) {
+			t.Fatalf("renderDocx output is not deterministic (iteration %d)", i)
+		}
+	}
+}
