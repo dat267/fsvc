@@ -12,6 +12,17 @@ import (
 type Column struct {
 	Header string
 	Path   string
+	// Format optionally renders the looked-up value; nil falls back to
+	// FormatValue. Used by both table and CSV rendering.
+	Format func(any) string
+}
+
+// format renders a cell value through the column's formatter.
+func (c Column) format(v any) string {
+	if c.Format != nil {
+		return c.Format(v)
+	}
+	return FormatValue(v)
 }
 
 // ParseRows extracts a row list from a JSON response body. arrayKey names the
@@ -80,7 +91,7 @@ func RenderTable(columns []Column, rows []map[string]any) string {
 	}
 	for _, row := range rows {
 		for i, col := range columns {
-			if w := utf8.RuneCountInString(FormatValue(Lookup(row, col.Path))); w > widths[i] {
+			if w := utf8.RuneCountInString(col.format(Lookup(row, col.Path))); w > widths[i] {
 				widths[i] = w
 			}
 		}
@@ -114,7 +125,7 @@ func RenderTable(columns []Column, rows []map[string]any) string {
 	for _, row := range rows {
 		cells := make([]string, len(columns))
 		for i, col := range columns {
-			cells[i] = FormatValue(Lookup(row, col.Path))
+			cells[i] = col.format(Lookup(row, col.Path))
 		}
 		writeRow(cells)
 	}
@@ -138,7 +149,7 @@ func RenderCSV(columns []Column, rows []map[string]any) string {
 			if i > 0 {
 				b.WriteString(",")
 			}
-			b.WriteString(csvEscape(FormatValue(Lookup(row, col.Path))))
+			b.WriteString(csvEscape(col.format(Lookup(row, col.Path))))
 		}
 		b.WriteString("\n")
 	}

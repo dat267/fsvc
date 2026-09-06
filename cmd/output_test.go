@@ -150,3 +150,39 @@ func TestTruncate(t *testing.T) {
 		t.Errorf("expected truncated with ellipsis, got %q", got)
 	}
 }
+
+func TestColumnFormat(t *testing.T) {
+	columns := []Column{
+		{Header: "ID", Path: "id"},
+		{Header: "Priority", Path: "priority", Format: func(v any) string {
+			if f, ok := v.(float64); ok && f == 2 {
+				return "Medium"
+			}
+			return FormatValue(v)
+		}},
+	}
+	rows := []map[string]any{
+		{"id": float64(1), "priority": float64(2)},
+	}
+
+	table := RenderTable(columns, rows)
+	if !strings.Contains(table, "Medium") {
+		t.Errorf("expected formatted value in table, got:\n%s", table)
+	}
+	if strings.Contains(table, "| 2 ") {
+		t.Errorf("expected raw number replaced in table, got:\n%s", table)
+	}
+
+	csv := RenderCSV(columns, rows)
+	if !strings.Contains(csv, "Medium") {
+		t.Errorf("expected formatted value in csv, got:\n%s", csv)
+	}
+}
+
+func TestColumnFormat_NilFallsBack(t *testing.T) {
+	columns := []Column{{Header: "P", Path: "priority"}}
+	rows := []map[string]any{{"priority": float64(3)}}
+	if got := RenderTable(columns, rows); !strings.Contains(got, "3") {
+		t.Errorf("expected raw value without Format, got:\n%s", got)
+	}
+}

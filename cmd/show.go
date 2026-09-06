@@ -42,6 +42,30 @@ var urgencyImpactName = map[int64]string{1: "Low", 2: "Medium", 3: "High"}
 // Freshservice uses 4 priority levels: 1=Low, 2=Medium, 3=High, 4=Urgent.
 var priorityName = map[int64]string{1: "Low", 2: "Medium", 3: "High", 4: "Urgent"}
 
+// statusName maps numeric ticket status values to their display names.
+// Confirmed from HAR captures and the private API notes:
+//   2 = Open, 3 = Pending, 4 = Resolved, 5 = Closed.
+// Unknown values (custom statuses) fall back to the raw number.
+var statusName = map[int64]string{
+	2: "Open",
+	3: "Pending",
+	4: "Resolved",
+	5: "Closed",
+}
+
+// columnName returns a formatter for table columns: numeric values resolve
+// through names, everything else falls back to FormatValue.
+func columnName(names map[int64]string) func(any) string {
+	return func(v any) string {
+		if f, ok := v.(float64); ok {
+			if name, found := names[int64(f)]; found {
+				return name
+			}
+		}
+		return FormatValue(v)
+	}
+}
+
 // ticketMetaFields lists the metadata rows shown at the top of a ticket view.
 var ticketMetaFields = []struct{ label, key, nameKey string }{
 	{"Status", "status", "status_name"},

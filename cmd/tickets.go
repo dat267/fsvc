@@ -40,8 +40,8 @@ type TicketsListCmd struct {
 var ticketsListColumns = []Column{
 	{Header: "ID", Path: "id"},
 	{Header: "Subject", Path: "subject"},
-	{Header: "Status", Path: "status"},
-	{Header: "Priority", Path: "priority"},
+	{Header: "Status", Path: "status", Format: columnName(statusName)},
+	{Header: "Priority", Path: "priority", Format: columnName(priorityName)},
 	{Header: "Requester", Path: "requester.name"},
 	{Header: "Group", Path: "group_id"},
 	{Header: "Created", Path: "created_at"},
@@ -349,8 +349,8 @@ type TicketsUpdateCmd struct {
 var ticketsUpdateColumns = []Column{
 	{Header: "ID", Path: "id"},
 	{Header: "Subject", Path: "subject"},
-	{Header: "Status", Path: "status"},
-	{Header: "Priority", Path: "priority"},
+	{Header: "Status", Path: "status", Format: columnName(statusName)},
+	{Header: "Priority", Path: "priority", Format: columnName(priorityName)},
 	{Header: "Group", Path: "group_id"},
 	{Header: "Responder", Path: "responder_id"},
 	{Header: "Department", Path: "department_id"},

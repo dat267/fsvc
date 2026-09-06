@@ -67,6 +67,15 @@ func TestTicketsListCmd_Table(t *testing.T) {
 	if !strings.Contains(out, "| ID    | Subject") {
 		t.Errorf("expected table header, got:\n%s", out)
 	}
+	// Status/priority columns render names, matching `tickets show`.
+	for _, want := range []string{"Open", "Resolved", "Low", "Medium", "High"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in list output:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "| 2 ") || strings.Contains(out, "| 4 ") {
+		t.Errorf("expected no raw status/priority numbers:\n%s", out)
+	}
 	if !strings.Contains(out, "Omar Saleh") {
 		t.Errorf("expected nested requester name in output:\n%s", out)
 	}
