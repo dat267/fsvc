@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"sync"
@@ -36,11 +34,6 @@ type Client struct {
 }
 
 func New(cfg ClientConfig) *Client {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		log.Printf("cookie jar unavailable: %v (cookies won't be persisted)", err)
-		jar = nil
-	}
 	baseURL := cfg.BaseURL
 	if baseURL == "" && cfg.Subdomain != "" {
 		baseURL = "https://" + cfg.Subdomain + ".freshservice.com"
@@ -49,7 +42,7 @@ func New(cfg ClientConfig) *Client {
 		baseURL:         strings.TrimSuffix(baseURL, "/"),
 		itildeskSession: cfg.ItildeskSession,
 		csrf:            cfg.CSRF,
-		http:            &http.Client{Timeout: 30 * time.Second, Jar: jar},
+		http:            &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -122,6 +115,7 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return nil, err
 	}
+	c.captureSession(resp)
 	bodyDrained := false
 	defer func() {
 		if !bodyDrained {
@@ -136,6 +130,20 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 	data, err := io.ReadAll(resp.Body)
 	bodyDrained = true
 	return data, err
+}
+
+// captureSession adopts a rotated _itildesk_session from the response so the
+// next request sends exactly one, current credential. The Client is the sole
+// owner of the session cookie value.
+func (c *Client) captureSession(resp *http.Response) {
+	for _, ck := range resp.Cookies() {
+		if ck.Name == itildeskSessionCookie && ck.Value != "" {
+			c.mu.Lock()
+			c.itildeskSession = ck.Value
+			c.mu.Unlock()
+			return
+		}
+	}
 }
 
 func (c *Client) CheckStatus(resp *http.Response) error {

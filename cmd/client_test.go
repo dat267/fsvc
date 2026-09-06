@@ -166,16 +166,15 @@ func TestClient_Put(t *testing.T) {
 	}
 }
 
-func TestClient_CookieJarRotation(t *testing.T) {
-	var secondCookie string
+func TestClient_CookieRotation(t *testing.T) {
+	var cookies []string
 	call := 0
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		call++
+		cookies = append(cookies, r.Header.Get("Cookie"))
 		if call == 1 {
 			w.Header().Set("Set-Cookie", "_itildesk_session=rotated")
-		} else {
-			secondCookie = r.Header.Get("Cookie")
 		}
 		_, _ = fmt.Fprint(w, `{}`)
 	}))
@@ -189,8 +188,13 @@ func TestClient_CookieJarRotation(t *testing.T) {
 		t.Fatalf("second request failed: %v", err)
 	}
 
-	if !strings.Contains(secondCookie, "_itildesk_session=rotated") {
-		t.Errorf("expected rotated session cookie in second request, got %q", secondCookie)
+	if cookies[0] != "_itildesk_session=abc" {
+		t.Errorf("expected configured cookie on first request, got %q", cookies[0])
+	}
+	// Exactly one credential must be sent after rotation — no stale value
+	// concatenated next to the rotated one.
+	if cookies[1] != "_itildesk_session=rotated" {
+		t.Errorf("expected only the rotated cookie on second request, got %q", cookies[1])
 	}
 }
 
