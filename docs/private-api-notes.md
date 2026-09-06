@@ -39,8 +39,13 @@ The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
 ### Status values
 
 - `status = 0` — unresolved (user-confirmed; `is_in ["0"]` in the unresolved view)
-- `status in [2, 3]` — the "My Open and Pending Tickets" saved filter from the
-  HAR uses this; 2 = Open, 3 = Pending
+- `status = 2` — Open (HAR: `status_name` pairing)
+- `status = 3` — Pending (the "My Open and Pending Tickets" saved filter uses `status in [2, 3]`)
+- `status = 4` — Resolved (HAR: `status_name` pairing)
+- `status = 5` — Closed (HAR: `status_name` pairing)
+- Status 1 was never observed in any HAR capture; higher/custom values are
+  instance-specific. The CLI maps unknown values back to the raw number.
+  Canonical mapping: `statusName` in `cmd/show.go`.
 
 ### responder_id values (user-confirmed)
 
@@ -67,7 +72,11 @@ The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
 ## Auth
 
 - Session cookies (`helpdesk_node_session`, `_itildesk_session`); the server
-  rotates `_itildesk_session` via `Set-Cookie` on responses.
+  rotates `_itildesk_session` via `Set-Cookie` on responses. The CLI adopts
+  the rotated value after every request (`Client.captureSession` in
+  `cmd/client.go`), so each request sends exactly one current credential.
+  The standalone PowerShell scripts use the single configured token and do
+  not track rotation.
 - Writes additionally require `X-CSRF-Token`.
 - Response header confirms the private API:
   `x-freshservice-api-version: latest=v2; requested=private`.
