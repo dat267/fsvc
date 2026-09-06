@@ -146,3 +146,59 @@ func TestClassify(t *testing.T) {
 		})
 	}
 }
+
+func TestTargetEndDate(t *testing.T) {
+	tueNoon := time.Date(2026, 8, 4, 12, 7, 30, 0, time.UTC) // Tuesday
+
+	tests := []struct {
+		name    string
+		now     time.Time
+		days    int
+		endHour int
+		want    string
+	}{
+		{"default keeps time, rounds quarter", tueNoon, 3, -1, "2026-08-07T12:15:00Z"},
+		{"endHour overrides time of day", tueNoon, 3, 17, "2026-08-07T17:00:00Z"},
+		{"endHour midnight", tueNoon, 3, 0, "2026-08-07T00:00:00Z"},
+		{"zero days same day", tueNoon, 0, 9, "2026-08-04T09:00:00Z"},
+		{"weekend skipped", time.Date(2026, 8, 7, 15, 0, 0, 0, time.UTC), 1, -1, "2026-08-10T15:00:00Z"}, // Fri + 1 = Mon
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := TargetEndDate(tt.now, tt.days, tt.endHour)
+			if got.Format(time.RFC3339) != tt.want {
+				t.Errorf("TargetEndDate(%v, %d, %d) = %s, want %s", tt.now, tt.days, tt.endHour, got.Format(time.RFC3339), tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldPushEnd(t *testing.T) {
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
+	future := now.Add(72 * time.Hour)
+	soon := now.Add(6 * time.Hour)
+	past := now.Add(-24 * time.Hour)
+
+	tests := []struct {
+		name        string
+		plannedEnd  *time.Time
+		now         time.Time
+		withinHours int
+		want        bool
+	}{
+		{"nil date always pushes", nil, now, 0, true},
+		{"past date always pushes", &past, now, 0, true},
+		{"future date without window skips", &future, now, 0, false},
+		{"future inside window pushes", &soon, now, 24, true},
+		{"future beyond window skips", &future, now, 24, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ShouldPushEnd(tt.plannedEnd, tt.now, tt.withinHours); got != tt.want {
+				t.Errorf("ShouldPushEnd(%v, %v, %d) = %v, want %v", tt.plannedEnd, tt.now, tt.withinHours, got, tt.want)
+			}
+		})
+	}
+}

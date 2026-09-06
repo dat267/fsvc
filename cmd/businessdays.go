@@ -78,3 +78,27 @@ func BusinessDaysBetween(from, to time.Time) float64 {
 func isWeekday(t time.Time) bool {
 	return t.Weekday() != time.Saturday && t.Weekday() != time.Sunday
 }
+
+// TargetEndDate computes the planned_end_date target: now advanced by n
+// business days, with the time of day overridden to endHour when endHour is
+// in [0,23], then rounded up to the quarter-hour.
+func TargetEndDate(now time.Time, days, endHour int) time.Time {
+	end := AddBusinessDays(now, days)
+	if endHour >= 0 && endHour <= 23 {
+		end = time.Date(end.Year(), end.Month(), end.Day(), endHour, 0, 0, 0, end.Location())
+	}
+	return roundUpQuarterHour(end)
+}
+
+// ShouldPushEnd decides whether a ticket's planned_end_date should be pushed.
+// nil and past dates always push; future dates push only when withinHours > 0
+// and the date falls inside the window.
+func ShouldPushEnd(plannedEnd *time.Time, now time.Time, withinHours int) bool {
+	if plannedEnd == nil {
+		return true
+	}
+	if plannedEnd.Before(now) {
+		return true
+	}
+	return withinHours > 0 && !plannedEnd.After(now.Add(time.Duration(withinHours) * time.Hour))
+}

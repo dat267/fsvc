@@ -480,11 +480,7 @@ type TicketsPushEndDatesCmd struct {
 
 func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error {
 	base := nowInTZ()
-	endDate := AddBusinessDays(base, c.Days)
-	if c.EndHour >= 0 {
-		endDate = time.Date(endDate.Year(), endDate.Month(), endDate.Day(), c.EndHour, 0, 0, 0, endDate.Location())
-	}
-	target := roundUpQuarterHour(endDate).Format(time.RFC3339)
+	target := TargetEndDate(base, c.Days, c.EndHour).Format(time.RFC3339)
 
 	var changes []pendingChange
 	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
@@ -493,16 +489,8 @@ func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error 
 			cur = t.PlannedEndDate.Format(time.RFC3339)
 		}
 
-		if cur != "" {
-			if at, err := time.Parse(time.RFC3339, cur); err == nil {
-				if c.WithinHours > 0 {
-					if at.After(base.Add(time.Duration(c.WithinHours) * time.Hour)) {
-						return nil // beyond the push window, leave alone
-					}
-				} else if at.After(base) {
-					return nil // already in the future, leave alone
-				}
-			}
+		if !ShouldPushEnd(t.PlannedEndDate, base, c.WithinHours) {
+			return nil
 		}
 
 		changes = append(changes, pendingChange{
