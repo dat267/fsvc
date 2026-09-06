@@ -650,21 +650,38 @@ func paginateTickets(ctx context.Context, client *Client, baseQuery url.Values, 
 }
 
 func previewAndApply(ctx context.Context, client *Client, changes []pendingChange, yes bool) error {
-	if len(changes) == 0 {
+	cs := ChangeSet(changes)
+	if len(cs) == 0 {
 		fmt.Println("No changes needed.")
 		return nil
 	}
-	for _, ch := range changes {
-		fmt.Printf("[%s] ticket %d: %s -> %s\n", ch.field, ch.id, ch.from, ch.to)
-	}
-	if !yes && !confirmApply(len(changes)) {
+	fmt.Print(cs.Preview())
+	if !yes && !confirmApply(len(cs)) {
 		fmt.Println("Aborted.")
 		return nil
 	}
+	return cs.Apply(ctx, client)
+}
 
+// ChangeSet is a batch of ticket updates that can be previewed and applied.
+type ChangeSet []pendingChange
+
+// Preview renders one line per change: "[field] ticket <id>: <from> -> <to>".
+func (cs ChangeSet) Preview() string {
+	var b strings.Builder
+	for _, ch := range cs {
+		fmt.Fprintf(&b, "[%s] ticket %d: %s -> %s\n", ch.field, ch.id, ch.from, ch.to)
+	}
+	return b.String()
+}
+
+// Apply PUTs every change to the API concurrently (bounded worker pool) and
+// prints per-ticket confirmations plus a final summary. Errors from
+// individual PUTs are reported wrapped; the batch is not rolled back.
+func (cs ChangeSet) Apply(ctx context.Context, client *Client) error {
 	// Build all payloads up front (sequential, cheap).
-	payloads := make([][]byte, len(changes))
-	for i, ch := range changes {
+	payloads := make([][]byte, len(cs))
+	for i, ch := range cs {
 		payload, err := json.Marshal(ch.body)
 		if err != nil {
 			return fmt.Errorf("build payload for ticket %d: %w", ch.id, err)
@@ -674,8 +691,8 @@ func previewAndApply(ctx context.Context, client *Client, changes []pendingChang
 
 	// Apply PUTs concurrently.
 	workers := categoriesWorkers
-	if len(changes) < workers {
-		workers = len(changes)
+	if len(cs) < workers {
+		workers = len(cs)
 	}
 	work := make(chan int)
 	var (
@@ -689,7 +706,7 @@ func previewAndApply(ctx context.Context, client *Client, changes []pendingChang
 		go func() {
 			defer wg.Done()
 			for idx := range work {
-				ch := changes[idx]
+				ch := cs[idx]
 				path := fmt.Sprintf("tickets/%d", ch.id)
 				if _, err := client.Put(ctx, path, payloads[idx]); err != nil {
 					errOnce.Do(func() { firstErr = fmt.Errorf("update ticket %d: %w", ch.id, err) })
@@ -701,7 +718,7 @@ func previewAndApply(ctx context.Context, client *Client, changes []pendingChang
 			}
 		}()
 	}
-	for i := range changes {
+	for i := range cs {
 		work <- i
 	}
 	close(work)
@@ -710,6 +727,6 @@ func previewAndApply(ctx context.Context, client *Client, changes []pendingChang
 	if firstErr != nil {
 		return firstErr
 	}
-	fmt.Printf("Done: %d applied\n", len(changes))
+	fmt.Printf("Done: %d applied\n", len(cs))
 	return nil
 }

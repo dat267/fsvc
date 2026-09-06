@@ -850,3 +850,81 @@ func TestTicketQueryList_QueryJSONAndFilter(t *testing.T) {
 		t.Errorf("expected start page 2, got %v", got)
 	}
 }
+
+func TestChangeSetPreview(t *testing.T) {
+	cs := ChangeSet{
+		{id: 10, field: "planned_end_date", from: "", to: "2026-08-07T12:15:00Z"},
+		{id: 30, field: "priority", from: "1", to: "3"},
+	}
+	want := "[planned_end_date] ticket 10:  -> 2026-08-07T12:15:00Z\n[priority] ticket 30: 1 -> 3\n"
+	if got := cs.Preview(); got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+}
+
+func TestChangeSetApply(t *testing.T) {
+	var mu sync.Mutex
+	var putCalls []struct {
+		Path string
+		Body []byte
+	}
+	mux := http.NewServeMux()
+	for _, id := range []string{"10", "20"} {
+		mux.HandleFunc("/api/_/tickets/"+id, func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			putCalls = append(putCalls, struct {
+				Path string
+				Body []byte
+			}{Path: r.URL.Path, Body: b})
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"ticket":{}}`)
+		})
+	}
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cs := ChangeSet{
+		{id: 10, field: "priority", body: map[string]any{"priority": float64(3)}},
+		{id: 20, field: "priority", body: map[string]any{"priority": float64(1)}},
+	}
+	out := captureStdout(t, func() {
+		if err := cs.Apply(context.Background(), newTestClient(srv.URL)); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if len(putCalls) != 2 {
+		t.Fatalf("expected 2 PUTs, got %d", len(putCalls))
+	}
+	bodies := map[string]string{}
+	for _, p := range putCalls {
+		bodies[strings.TrimPrefix(p.Path, "/api/_/tickets/")] = string(p.Body)
+	}
+	if bodies["10"] != `{"priority":3}` || bodies["20"] != `{"priority":1}` {
+		t.Errorf("unexpected bodies: %v", bodies)
+	}
+	if !strings.Contains(out, "Done: 2 applied") {
+		t.Errorf("expected summary, got %q", out)
+	}
+}
+
+func TestChangeSetApply_ReportsError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprint(w, `{"errors":["boom"]}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cs := ChangeSet{{id: 10, field: "priority", body: map[string]any{"priority": float64(3)}}}
+	var err error
+	out := captureStdout(t, func() {
+		err = cs.Apply(context.Background(), newTestClient(srv.URL))
+	})
+	if err == nil || !strings.Contains(err.Error(), "update ticket 10") {
+		t.Errorf("expected wrapped update error, got %v (out: %q)", err, out)
+	}
+}
