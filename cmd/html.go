@@ -16,20 +16,17 @@ func renderHTML(doc *exportDoc) ([]byte, error) {
 	}
 
 	var b strings.Builder
-	subject := exportField(doc.Ticket, "subject")
-	display := exportField(doc.Ticket, "display_id")
-	if display == "" {
-		display = exportField(doc.Ticket, "id")
-	}
+	subject := doc.Subject
+	display := doc.DisplayID
 	fmt.Fprintf(&b, "<h1>Ticket #%s — %s</h1>\n", display, subject)
 
-	if desc := exportField(doc.Ticket, "description"); desc != "" {
+	if desc := doc.DescHTML; desc != "" {
 		b.WriteString(rewriteImageSrcs(desc, dataURI))
 		b.WriteString("\n")
-	} else if desc := stripHTML(exportField(doc.Ticket, "description_text")); desc != "" {
+	} else if desc := stripHTML(doc.DescText); desc != "" {
 		fmt.Fprintf(&b, "<p>%s</p>\n", desc)
 	}
-	writeImagesNotInlined(&b, doc, "ticket", dataURI, exportField(doc.Ticket, "description"))
+	writeImagesNotInlined(&b, doc, "ticket", dataURI, doc.DescHTML)
 
 	writeHTMLAttachments(&b, doc.Attachments)
 
@@ -37,9 +34,9 @@ func renderHTML(doc *exportDoc) ([]byte, error) {
 	if len(doc.Conversations) == 0 {
 		b.WriteString("<p>(none)</p>\n")
 	}
-	for _, c := range doc.Conversations {
-		writeHTMLConversation(&b, c, dataURI)
-		writeImagesNotInlined(&b, doc, "conv-"+exportField(c, "id"), dataURI, exportField(c, "body"))
+	for _, conv := range doc.Conversations {
+		writeHTMLConversation(&b, conv, dataURI)
+		writeImagesNotInlined(&b, doc, "conv-"+conv.ID, dataURI, conv.BodyHTML)
 	}
 	return []byte(b.String()), nil
 }
@@ -82,19 +79,17 @@ func writeHTMLAttachments(b *strings.Builder, atts []exportAttachment) {
 	b.WriteString("</ul>\n")
 }
 
-func writeHTMLConversation(b *strings.Builder, c map[string]any, dataURI map[string]string) {
+func writeHTMLConversation(b *strings.Builder, conv conversationDoc, dataURI map[string]string) {
 	dir := "incoming"
-	if incoming, ok := c["incoming"].(bool); ok && !incoming {
+	if !conv.Incoming {
 		dir = "outgoing"
 	}
-	author := conversationAuthor(c)
-	stamp := exportField(c, "created_at")
-	fmt.Fprintf(b, "<h3>%s (%s, %s)</h3>\n", author, dir, stamp)
+	fmt.Fprintf(b, "<h3>%s (%s, %s)</h3>\n", conv.Author, dir, conv.At)
 
-	if body := exportField(c, "body"); body != "" {
+	if body := conv.BodyHTML; body != "" {
 		b.WriteString(rewriteImageSrcs(body, dataURI))
 		b.WriteString("\n")
-	} else if body := stripHTML(exportField(c, "body_text")); body != "" {
+	} else if body := stripHTML(conv.BodyText); body != "" {
 		fmt.Fprintf(b, "<p>%s</p>\n", body)
 	} else {
 		b.WriteString("<p>(no body)</p>\n")

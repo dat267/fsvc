@@ -18,12 +18,28 @@ type TicketsExportCmd struct {
 	Out string `short:"o" help:"Output file (.docx, .md, or .html)" required:""`
 }
 
-// exportDoc is the data the exporters render.
+// exportDoc is the data the exporters render. The typed fields are parsed
+// once from Ticket/Conversations raw maps; renderers consume the typed view.
 type exportDoc struct {
-	Ticket        map[string]any
-	Conversations []map[string]any
+	Ticket        map[string]any // raw ticket; show's meta table reads name keys from it
+	Subject       string
+	DisplayID     string // display_id, falling back to id
+	DescHTML      string
+	DescText      string
+	Conversations []conversationDoc
 	Images        []exportImage
 	Attachments   []exportAttachment
+}
+
+// conversationDoc is the typed per-conversation view renderers consume.
+type conversationDoc struct {
+	ID          string
+	Author      string // nested user name when present, else user_id
+	Incoming    bool
+	At          string
+	BodyHTML    string
+	BodyText    string
+	Attachments []map[string]any
 }
 
 // exportImage is a downloaded image to embed in an export. Owner is "ticket"
@@ -107,6 +123,44 @@ func writeAssets(outPath string, assets []exportAsset) error {
 	return nil
 }
 
+// parseExportDoc extracts the typed view renderers consume from the raw
+// ticket and conversation maps.
+func parseExportDoc(ticket map[string]any, convs []map[string]any) *exportDoc {
+	doc := &exportDoc{Ticket: ticket}
+	doc.Subject = exportField(ticket, "subject")
+	doc.DisplayID = exportField(ticket, "display_id")
+	if doc.DisplayID == "" {
+		doc.DisplayID = exportField(ticket, "id")
+	}
+	doc.DescHTML = exportField(ticket, "description")
+	doc.DescText = exportField(ticket, "description_text")
+	doc.Conversations = make([]conversationDoc, len(convs))
+	for i, c := range convs {
+		doc.Conversations[i] = conversationDoc{
+			ID:          exportField(c, "id"),
+			Author:      conversationAuthor(c),
+			Incoming:    c["incoming"] == true,
+			At:          exportField(c, "created_at"),
+			BodyHTML:    exportField(c, "body"),
+			BodyText:    exportField(c, "body_text"),
+			Attachments: attachmentsOf(c),
+		}
+	}
+	return doc
+}
+
+// attachmentsOf extracts the attachments array from a ticket/conversation map.
+func attachmentsOf(obj map[string]any) []map[string]any {
+	raw, _ := obj["attachments"].([]any)
+	out := make([]map[string]any, 0, len(raw))
+	for _, a := range raw {
+		if m, ok := a.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // fetchExportDoc pulls the full ticket and its conversations.
 func fetchExportDoc(ctx context.Context, client *Client, id int64) (*exportDoc, error) {
 	raw, err := client.Get(ctx, fmt.Sprintf("tickets/%d", id), nil)
@@ -135,7 +189,7 @@ func fetchExportDoc(ctx context.Context, client *Client, id int64) (*exportDoc, 
 		return nil, fmt.Errorf("parse conversations: %w", err)
 	}
 
-	return &exportDoc{Ticket: ticketResp.Ticket, Conversations: convResp.Conversations}, nil
+	return parseExportDoc(ticketResp.Ticket, convResp.Conversations), nil
 }
 
 // exportField returns a readable value for a ticket key, or "".

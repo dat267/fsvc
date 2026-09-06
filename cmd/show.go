@@ -62,13 +62,10 @@ var ticketMetaFields = []struct{ label, key, nameKey string }{
 func renderTicketMarkdown(doc *exportDoc, id int64) ([]byte, []exportAsset, error) {
 	var b strings.Builder
 
-	subject := exportField(doc.Ticket, "subject")
-	display := exportField(doc.Ticket, "display_id")
+	subject := doc.Subject
+	display := doc.DisplayID
 	if display == "" {
 		display = fmt.Sprintf("%d", id)
-		if d := exportField(doc.Ticket, "id"); d != "" {
-			display = d
-		}
 	}
 	fmt.Fprintf(&b, "# Ticket #%s — %s\n\n", display, subject)
 
@@ -101,7 +98,7 @@ func renderTicketMarkdown(doc *exportDoc, id int64) ([]byte, []exportAsset, erro
 	}
 	b.WriteString("\n")
 
-	if desc := stripHTML(exportField(doc.Ticket, "description_text")); desc != "" {
+	if desc := stripHTML(doc.DescText); desc != "" {
 		fmt.Fprintf(&b, "%s\n\n", desc)
 	}
 	for _, img := range imagesFor(doc.Images, "ticket") {
@@ -116,9 +113,9 @@ func renderTicketMarkdown(doc *exportDoc, id int64) ([]byte, []exportAsset, erro
 		b.WriteString("(none)\n")
 	}
 	var assets []exportAsset
-	for _, c := range doc.Conversations {
-		writeMarkdownConversation(&b, c)
-		for _, img := range imagesFor(doc.Images, "conv-"+exportField(c, "id")) {
+	for _, conv := range doc.Conversations {
+		writeMarkdownConversation(&b, conv)
+		for _, img := range imagesFor(doc.Images, "conv-"+conv.ID) {
 			b.WriteString(markdownImage("show", img))
 			b.WriteString("\n")
 		}

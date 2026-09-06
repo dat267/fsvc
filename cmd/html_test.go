@@ -9,17 +9,19 @@ import (
 func TestRenderHTML(t *testing.T) {
 	doc := &exportDoc{
 		Ticket: map[string]any{
-			"display_id":  "10100",
-			"subject":     "Printer not working",
-			"description": `<p>Broken</p><img src="http://acme.freshservice.com/a.png">`,
+			"display_id": "10100",
+			"subject":    "Printer not working",
 		},
-		Conversations: []map[string]any{
+		Subject:   "Printer not working",
+		DisplayID: "10100",
+		DescHTML:  `<p>Broken</p><img src="http://acme.freshservice.com/a.png">`,
+		Conversations: []conversationDoc{
 			{
-				"id":        "1",
-				"user_id":   "2100",
-				"incoming":  true,
-				"created_at": "2026-08-01T10:30:00Z",
-				"body":      `<p>See this</p><img src="http://acme.freshservice.com/b.png">`,
+				ID:       "1",
+				Author:   "2100",
+				Incoming: true,
+				At:       "2026-08-01T10:30:00Z",
+				BodyHTML: `<p>See this</p><img src="http://acme.freshservice.com/b.png">`,
 			},
 		},
 		Images: []exportImage{

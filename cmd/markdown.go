@@ -12,14 +12,11 @@ import (
 func renderMarkdown(doc *exportDoc, outPath string) ([]byte, []exportAsset, error) {
 	var b strings.Builder
 
-	subject := exportField(doc.Ticket, "subject")
-	display := exportField(doc.Ticket, "display_id")
-	if display == "" {
-		display = exportField(doc.Ticket, "id")
-	}
+	subject := doc.Subject
+	display := doc.DisplayID
 	fmt.Fprintf(&b, "# Ticket #%s — %s\n\n", display, subject)
 
-	if desc := stripHTML(exportField(doc.Ticket, "description_text")); desc != "" {
+	if desc := stripHTML(doc.DescText); desc != "" {
 		fmt.Fprintf(&b, "%s\n\n", desc)
 	}
 	for _, img := range imagesFor(doc.Images, "ticket") {
@@ -33,9 +30,9 @@ func renderMarkdown(doc *exportDoc, outPath string) ([]byte, []exportAsset, erro
 		b.WriteString("(none)\n")
 	}
 	var assets []exportAsset
-	for _, c := range doc.Conversations {
-		writeMarkdownConversation(&b, c)
-		for _, img := range imagesFor(doc.Images, "conv-"+exportField(c, "id")) {
+	for _, conv := range doc.Conversations {
+		writeMarkdownConversation(&b, conv)
+		for _, img := range imagesFor(doc.Images, "conv-"+conv.ID) {
 			b.WriteString(markdownImage(outPath, img))
 			b.WriteString("\n")
 		}
@@ -80,16 +77,14 @@ func markdownImage(outPath string, img exportImage) string {
 	return "![](" + assetRelPath(outPath, img) + ")"
 }
 
-func writeMarkdownConversation(b *strings.Builder, c map[string]any) {
+func writeMarkdownConversation(b *strings.Builder, conv conversationDoc) {
 	dir := "incoming"
-	if incoming, ok := c["incoming"].(bool); ok && !incoming {
+	if !conv.Incoming {
 		dir = "outgoing"
 	}
-	author := conversationAuthor(c)
-	stamp := exportField(c, "created_at")
-	bodyText := stripHTML(exportField(c, "body_text"))
+	bodyText := stripHTML(conv.BodyText)
 
-	fmt.Fprintf(b, "### %s (%s, %s)\n", author, dir, stamp)
+	fmt.Fprintf(b, "### %s (%s, %s)\n", conv.Author, dir, conv.At)
 	if bodyText != "" {
 		fmt.Fprintf(b, "%s\n", bodyText)
 	} else {

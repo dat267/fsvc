@@ -17,14 +17,11 @@ import (
 func renderDocx(doc *exportDoc) ([]byte, error) {
 	var body strings.Builder
 
-	subject := exportField(doc.Ticket, "subject")
-	display := exportField(doc.Ticket, "display_id")
-	if display == "" {
-		display = exportField(doc.Ticket, "id")
-	}
+	subject := doc.Subject
+	display := doc.DisplayID
 	writeDocxHeading(&body, fmt.Sprintf("Ticket #%s — %s", display, subject), 1)
 
-	if desc := stripHTML(exportField(doc.Ticket, "description_text")); desc != "" {
+	if desc := stripHTML(doc.DescText); desc != "" {
 		writeDocxPara(&body, desc)
 	}
 	for _, img := range imagesFor(doc.Images, "ticket") {
@@ -36,9 +33,9 @@ func renderDocx(doc *exportDoc) ([]byte, error) {
 	if len(doc.Conversations) == 0 {
 		writeDocxPara(&body, "(none)")
 	}
-	for _, c := range doc.Conversations {
-		owner := "conv-" + exportField(c, "id")
-		writeDocxConversation(&body, c)
+	for _, conv := range doc.Conversations {
+		owner := "conv-" + conv.ID
+		writeDocxConversation(&body, conv)
 		for _, img := range imagesFor(doc.Images, owner) {
 			writeDocxImage(&body, img)
 		}
@@ -74,17 +71,15 @@ func writeDocxPara(b *strings.Builder, text string) {
 	b.WriteString(`</w:t></w:r></w:p>`)
 }
 
-func writeDocxConversation(b *strings.Builder, c map[string]any) {
+func writeDocxConversation(b *strings.Builder, conv conversationDoc) {
 	dir := "incoming"
-	if incoming, ok := c["incoming"].(bool); ok && !incoming {
+	if !conv.Incoming {
 		dir = "outgoing"
 	}
-	author := conversationAuthor(c)
-	stamp := exportField(c, "created_at")
-	bodyText := stripHTML(exportField(c, "body_text"))
+	bodyText := stripHTML(conv.BodyText)
 
 	b.WriteString(`<w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t>`)
-	xmlEscape(b, fmt.Sprintf("%s (%s, %s)", author, dir, stamp))
+	xmlEscape(b, fmt.Sprintf("%s (%s, %s)", conv.Author, dir, conv.At))
 	b.WriteString(`</w:t></w:r></w:p>`)
 	if bodyText != "" {
 		writeDocxPara(b, bodyText)

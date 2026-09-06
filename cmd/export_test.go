@@ -204,3 +204,66 @@ func TestExportField_JSON(t *testing.T) {
 		t.Error("expected tags rendered")
 	}
 }
+
+func TestParseExportDoc(t *testing.T) {
+	ticket := map[string]any{
+		"id":              float64(10100),
+		"subject":         "Printer not working",
+		"description":     "<p>Broken &amp; bad</p>",
+		"description_text": "Printer jammed",
+	}
+	convs := []map[string]any{
+		{
+			"id": float64(2), "user_id": float64(2100), "incoming": true,
+			"created_at": "2026-08-01T10:30:00Z",
+			"body":       `<p>See <img src="/a.png"></p>`, "body_text": "<p>See</p>",
+			"attachments": []any{map[string]any{"id": "501"}},
+		},
+		{
+			"id": float64(3), "user_id": float64(3100),
+			"user":       map[string]any{"name": "Nadia Rahman"},
+			"incoming":   false,
+			"created_at": "2026-08-01T11:00:00Z",
+		},
+	}
+
+	doc := parseExportDoc(ticket, convs)
+
+	if doc.Subject != "Printer not working" {
+		t.Errorf("subject: got %q", doc.Subject)
+	}
+	if doc.DisplayID != "10100" {
+		t.Errorf("expected display fallback to id, got %q", doc.DisplayID)
+	}
+	if doc.DescHTML != "<p>Broken &amp; bad</p>" {
+		t.Errorf("desc html: got %q", doc.DescHTML)
+	}
+	if doc.DescText != "Printer jammed" {
+		t.Errorf("desc text: got %q", doc.DescText)
+	}
+	if len(doc.Conversations) != 2 {
+		t.Fatalf("expected 2 conversations, got %d", len(doc.Conversations))
+	}
+	c0 := doc.Conversations[0]
+	if c0.ID != "2" || c0.Author != "2100" || !c0.Incoming || c0.At != "2026-08-01T10:30:00Z" {
+		t.Errorf("conv0 scalars wrong: %+v", c0)
+	}
+	if c0.BodyHTML != `<p>See <img src="/a.png"></p>` || c0.BodyText != "<p>See</p>" {
+		t.Errorf("conv0 bodies wrong: %q %q", c0.BodyHTML, c0.BodyText)
+	}
+	if len(c0.Attachments) != 1 || c0.Attachments[0]["id"] != "501" {
+		t.Errorf("conv0 attachments wrong: %+v", c0.Attachments)
+	}
+	c1 := doc.Conversations[1]
+	if c1.Author != "Nadia Rahman" || c1.Incoming {
+		t.Errorf("conv1 author/incoming wrong: %+v", c1)
+	}
+}
+
+func TestParseExportDoc_DisplayIDPreference(t *testing.T) {
+	ticket := map[string]any{"id": float64(1), "display_id": float64(10100)}
+	doc := parseExportDoc(ticket, nil)
+	if doc.DisplayID != "10100" {
+		t.Errorf("expected display_id preferred over id, got %q", doc.DisplayID)
+	}
+}

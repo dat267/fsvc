@@ -16,12 +16,14 @@ func TestRenderDocx_Images(t *testing.T) {
 			"display_id": "10100",
 			"subject":    "Printer not working",
 		},
-		Conversations: []map[string]any{
+		Subject:   "Printer not working",
+		DisplayID: "10100",
+		Conversations: []conversationDoc{
 			{
-				"id":        "1",
-				"user_id":   "2100",
-				"incoming":  true,
-				"created_at": "2026-08-01T10:30:00Z",
+				ID:       "1",
+				Author:   "2100",
+				Incoming: true,
+				At:       "2026-08-01T10:30:00Z",
 			},
 		},
 		Images: []exportImage{

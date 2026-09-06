@@ -56,29 +56,23 @@ func gatherMedia(ctx context.Context, client *Client, doc *exportDoc) error {
 		add(owner, resolved, data, http.DetectContentType(data), name)
 	}
 
-	for _, src := range imageSrcs(exportField(doc.Ticket, "description")) {
+	for _, src := range imageSrcs(doc.DescHTML) {
 		fetch("ticket", src)
 	}
-	walkAttachments(ctx, client, doc, "ticket", doc.Ticket, add)
+	walkAttachments(ctx, client, doc, "ticket", attachmentsOf(doc.Ticket), add)
 
-	for _, c := range doc.Conversations {
-		owner := "conv-" + exportField(c, "id")
-		for _, src := range imageSrcs(exportField(c, "body")) {
+	for _, conv := range doc.Conversations {
+		owner := "conv-" + conv.ID
+		for _, src := range imageSrcs(conv.BodyHTML) {
 			fetch(owner, src)
 		}
-		walkAttachments(ctx, client, doc, owner, c, add)
+		walkAttachments(ctx, client, doc, owner, conv.Attachments, add)
 	}
 	return nil
 }
 
-func walkAttachments(ctx context.Context, client *Client, doc *exportDoc, owner string, obj map[string]any, add func(owner, id string, data []byte, mime, name string)) {
-	atts, _ := obj["attachments"].([]any)
-	for _, a := range atts {
-		m, ok := a.(map[string]any)
-		if !ok {
-			continue
-		}
-		contentType := exportField(m, "content_type")
+func walkAttachments(ctx context.Context, client *Client, doc *exportDoc, owner string, atts []map[string]any, add func(owner, id string, data []byte, mime, name string)) {
+	for _, m := range atts {		contentType := exportField(m, "content_type")
 		name := exportField(m, "name")
 		canonical := exportField(m, "canonical_url")
 		if canonical == "" {
