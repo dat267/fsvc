@@ -143,7 +143,7 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 
 	if c.QueryJSON != "" || c.Filter != 0 {
 		var err error
-		myTickets, err = c.collectTickets(ctx, client, "")
+		myTickets, err = TicketQuery{PerPage: c.PerPage, QueryJSON: c.QueryJSON, Filter: c.Filter}.List(ctx, client, c.Page)
 		if err != nil {
 			return err
 		}
@@ -153,11 +153,11 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			unassigned, errUn = c.collectTickets(ctx, client, unassignedHash)
+			unassigned, errUn = UnassignedTickets(c.PerPage).List(ctx, client, c.Page)
 		}()
 		go func() {
 			defer wg.Done()
-			myTickets, errMy = c.collectTickets(ctx, client, selfAssignedHash)
+			myTickets, errMy = SelfAssignedTickets(c.PerPage).List(ctx, client, c.Page)
 		}()
 		wg.Wait()
 		if errUn != nil {
@@ -212,41 +212,6 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 	fmt.Printf("\n## Last reply from someone else, awaiting agent (%d)\n\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, client)
 	return nil
-}
-
-const (
-	selfAssignedHash = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`
-	unassignedHash   = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["-1"],"type":"default"}]`
-)
-
-// collectTickets paginates through the tickets list, collecting every page.
-func (c *TicketsClassifyCmd) collectTickets(ctx context.Context, client *Client, defaultHash string) ([]Ticket, error) {
-	// Build the base query once; only the page number changes per iteration.
-	q := url.Values{}
-	q.Set("per_page", strconv.Itoa(c.PerPage))
-	q.Set("order_by", "created_at")
-	q.Set("order_type", "asc")
-
-	if c.QueryJSON != "" {
-		var extra map[string]any
-		if err := json.Unmarshal([]byte(c.QueryJSON), &extra); err != nil {
-			return nil, fmt.Errorf("invalid --query-json: %w", err)
-		}
-		for k, v := range extra {
-			if s, ok := v.(string); ok {
-				q.Set(k, s)
-				continue
-			}
-			b, _ := json.Marshal(v)
-			q.Set(k, string(b))
-		}
-	} else if c.Filter != 0 {
-		q.Set("filter", strconv.FormatInt(c.Filter, 10))
-	} else {
-		q.Set("query_hash", defaultHash)
-	}
-
-	return paginateTickets(ctx, client, q, c.Page)
 }
 
 // classifyTickets assigns each ticket to a category using a bounded worker
@@ -578,7 +543,7 @@ func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *Client) error 
 // forEachMyTicket paginates through self-assigned unresolved tickets and calls
 // fn sequentially for each, using the list-level ticket data directly.
 func forEachMyTicket(ctx context.Context, client *Client, perPage int, fn func(t Ticket) error) error {
-	list, err := collectMyTickets(ctx, client, perPage)
+	list, err := SelfAssignedTickets(perPage).List(ctx, client, 1)
 	if err != nil {
 		return err
 	}
@@ -591,13 +556,70 @@ func forEachMyTicket(ctx context.Context, client *Client, perPage int, fn func(t
 	return nil
 }
 
-// collectMyTickets paginates the self-assigned unresolved ticket list,
-// returning each ticket's list-level data.
-func collectMyTickets(ctx context.Context, client *Client, perPage int) ([]Ticket, error) {
-	q := url.Values{"per_page": {strconv.Itoa(perPage)},
-		"order_by": {"created_at"}, "order_type": {"asc"},
-		"query_hash": {`[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`}}
-	return paginateTickets(ctx, client, q, 1)
+// ticketView is a saved view (query_hash) for the tickets list endpoint.
+type ticketView string
+
+const (
+	viewSelfAssigned ticketView = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]`
+	viewUnassigned   ticketView = `[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["-1"],"type":"default"}]`
+)
+
+// TicketQuery describes a tickets-list request: a named saved view, a raw
+// query-json object, or a filter ID — plus the shared list ordering.
+type TicketQuery struct {
+	PerPage   int
+	View      ticketView
+	QueryJSON string
+	Filter    int64
+}
+
+// SelfAssignedTickets queries self-assigned unresolved tickets.
+func SelfAssignedTickets(perPage int) TicketQuery {
+	return TicketQuery{PerPage: perPage, View: viewSelfAssigned}
+}
+
+// UnassignedTickets queries unassigned unresolved tickets.
+func UnassignedTickets(perPage int) TicketQuery {
+	return TicketQuery{PerPage: perPage, View: viewUnassigned}
+}
+
+// baseQuery builds the request params (everything except page). Exactly one
+// source wins: query-json, then filter, then the named view.
+func (q TicketQuery) baseQuery() (url.Values, error) {
+	v := url.Values{}
+	v.Set("per_page", strconv.Itoa(q.PerPage))
+	v.Set("order_by", "created_at")
+	v.Set("order_type", "asc")
+
+	switch {
+	case q.QueryJSON != "":
+		var extra map[string]any
+		if err := json.Unmarshal([]byte(q.QueryJSON), &extra); err != nil {
+			return nil, fmt.Errorf("invalid --query-json: %w", err)
+		}
+		for k, val := range extra {
+			if s, ok := val.(string); ok {
+				v.Set(k, s)
+				continue
+			}
+			b, _ := json.Marshal(val)
+			v.Set(k, string(b))
+		}
+	case q.Filter != 0:
+		v.Set("filter", strconv.FormatInt(q.Filter, 10))
+	default:
+		v.Set("query_hash", string(q.View))
+	}
+	return v, nil
+}
+
+// List fetches every page of the query starting at startPage.
+func (q TicketQuery) List(ctx context.Context, client *Client, startPage int) ([]Ticket, error) {
+	base, err := q.baseQuery()
+	if err != nil {
+		return nil, err
+	}
+	return paginateTickets(ctx, client, base, startPage)
 }
 
 // paginateTickets walks every page of a tickets query, appending results until

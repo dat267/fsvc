@@ -793,3 +793,60 @@ func TestTicketsSyncPriorityCmd(t *testing.T) {
 		t.Errorf("expected summary, got %q", out)
 	}
 }
+
+func TestTicketQueryList_SelfAssignedView(t *testing.T) {
+	var got url.Values
+	var calls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		got = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"subject":"A"}],"meta":{"has_next":false}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tickets, err := SelfAssignedTickets(100).List(context.Background(), newTestClient(srv.URL), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tickets) != 1 || tickets[0].ID != 10 {
+		t.Errorf("unexpected tickets: %+v", tickets)
+	}
+	if calls != 1 {
+		t.Errorf("expected 1 call, got %d", calls)
+	}
+	if got.Get("per_page") != "100" || got.Get("order_by") != "created_at" || got.Get("order_type") != "asc" {
+		t.Errorf("unexpected base params: %v", got)
+	}
+	if !strings.Contains(got.Get("query_hash"), `"responder_id"`) || !strings.Contains(got.Get("query_hash"), `"0"`) {
+		t.Errorf("expected self-assigned query_hash, got %q", got.Get("query_hash"))
+	}
+}
+
+func TestTicketQueryList_QueryJSONAndFilter(t *testing.T) {
+	var got url.Values
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"tickets":[],"meta":{"has_next":false}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	q := TicketQuery{PerPage: 50, QueryJSON: `{"filter":"123","tags":["a","b"]}`, Filter: 1100}
+	if _, err := q.List(context.Background(), newTestClient(srv.URL), 2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Get("filter") != "123" {
+		t.Errorf("expected raw JSON string values passed through unquoted, got %v", got)
+	}
+	if got.Get("tags") != `["a","b"]` {
+		t.Errorf("expected JSON-encoded arrays, got %v", got)
+	}
+	if got.Get("page") != "2" {
+		t.Errorf("expected start page 2, got %v", got)
+	}
+}
