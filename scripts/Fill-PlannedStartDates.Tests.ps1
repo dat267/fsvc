@@ -42,8 +42,11 @@ Assert-Equal (Should-FillStart -PlannedStartDate $null -CreatedAt "") $false "nu
 Assert-Equal (Should-FillStart -PlannedStartDate $null -CreatedAt $null) $false "null start + null created_at skipped"
 
 Write-Host "== Round-Up-QuarterHour (derived from created_at) ==" -ForegroundColor Cyan
-Assert-Equal (Round-Up-QuarterHour ([datetime]"2026-08-01T12:07:30Z")).ToString("yyyy-MM-ddTHH:mm:ssZ") "2026-08-01T12:15:00Z" "created_at 12:07:30 -> 12:15:00"
-Assert-Equal (Round-Up-QuarterHour ([datetime]"2026-08-01T23:59:59Z")).ToString("yyyy-MM-ddTHH:mm:ssZ") "2026-08-02T00:00:00Z" "day rollover"
+Assert-Equal (Format-Iso8601 (Round-Up-QuarterHour ([datetimeoffset]::Parse("2026-08-01T12:07:30+00:00")))) "2026-08-01T12:15:00Z" "created_at 12:07:30 -> 12:15:00"
+Assert-Equal (Format-Iso8601 (Round-Up-QuarterHour ([datetimeoffset]::Parse("2026-08-01T23:59:59+00:00")))) "2026-08-02T00:00:00Z" "day rollover"
+# Regression: parsing to local time and labelling it Z corrupted the instant
+# on any non-UTC machine; the account offset must survive.
+Assert-Equal (Format-Iso8601 (Round-Up-QuarterHour ([datetimeoffset]::Parse("2026-08-01T12:07:30+04:00")))) "2026-08-01T12:15:00+04:00" "keeps the account offset"
 
 Write-Host "== URL construction ==" -ForegroundColor Cyan
 # The 404 regression: "tickets?" must survive the query append.

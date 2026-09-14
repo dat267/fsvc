@@ -19,14 +19,17 @@
 #     Freshservice accounts. If the default finds no/too many tickets, replace
 #     $Filter with your instance's saved-filter query hash (copy it from the
 #     Network tab of any tickets list request in DevTools).
-#   - "Business days" = Mon-Fri, your server's UTC clock. No holidays, no
-#     timezone awareness beyond usage of UTC.
+#   - "Business days" = Mon-Fri, in the account timezone (derived from the
+#     tickets' own dates; falls back to the local machine when no ticket has a
+#     date). No holidays.
 #
 # SCOPE: by default only touches tickets whose planned_end_date is null or in
 # the past. When $WithinDays > 0 it also touches tickets due within the next
 # $WithinDays days; future dates beyond the window are left alone. New dates
 # are rounded up to the next quarter hour so they don't look machine-generated.
-# This is a bulk operation - review the preview list before confirming.
+# New dates are written in the same UTC offset as the tickets' existing dates,
+# so they are consistent with the rest of the account. This is a bulk
+# operation - review the preview list before confirming.
 #
 # Usage:
 #   Fill in the CONFIG variables below, then run:
@@ -105,7 +108,7 @@ function Invoke-FSPut {
 }
 
 function Add-BusinessDays {
-    param([datetime]$Start, [int]$Days)
+    param([datetimeoffset]$Start, [int]$Days)
     $t = $Start
     $added = 0
     while ($added -lt $Days) {
@@ -117,20 +120,67 @@ function Add-BusinessDays {
     return $t
 }
 
-# Round up to the next quarter hour (:00/:15/:30/:45).
-function Get-Minutes {
-    param([datetime]$t)
-    return $t.Hour * 60 + $t.Minute
+# Parses API JSON. PowerShell 7.5+ keeps ISO timestamp strings verbatim via
+# -DateKind String; older versions parse them into DateTime (the date helpers
+# below convert those back to DateTimeOffset). Without this, timestamps are
+# converted to local time and the account offset is lost.
+function ConvertFrom-FSJson {
+    param([Parameter(Mandatory, ValueFromPipeline)][string]$Json)
+    if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey("DateKind")) {
+        return $Json | ConvertFrom-Json -DateKind String
+    }
+    return $Json | ConvertFrom-Json
 }
 
+# Converts an API timestamp (string, DateTime or DateTimeOffset) to a
+# DateTimeOffset that preserves the account's UTC offset. $null when absent or
+# unparseable.
+function ConvertTo-FSDateTimeOffset {
+    param([AllowNull()]$Value)
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [datetimeoffset]) { return $Value }
+    if ($Value -is [datetime]) { return [datetimeoffset]$Value }
+    $parsed = [datetimeoffset]::MinValue
+    if ([datetimeoffset]::TryParse([string]$Value, [ref]$parsed)) { return $parsed }
+    return $null
+}
+
+# Renders a DateTimeOffset as RFC 3339, using Z for a zero offset to match the
+# Go CLI.
+function Format-Iso8601 {
+    param([datetimeoffset]$Value)
+    if ($Value.Offset -eq [timespan]::Zero) {
+        return $Value.ToString("yyyy-MM-ddTHH:mm:ss") + "Z"
+    }
+    return $Value.ToString("yyyy-MM-ddTHH:mm:sszzz")
+}
+
+# Round up to the next quarter hour (:00/:15/:30/:45), keeping the timestamp's
+# own UTC offset (the account timezone).
 function Round-Up-QuarterHour {
-    param([datetime]$t)
-    $total = Get-Minutes $t
-    if ($t.Second -ne 0 -or ($total % 15) -ne 0) {
+    param([datetimeoffset]$t)
+    $total = $t.Hour * 60 + $t.Minute
+    if ($t.Second -ne 0 -or $t.Millisecond -ne 0 -or ($total % 15) -ne 0) {
         $total = [math]::Floor($total / 15) * 15 + 15
     }
-    $base = [datetime]::new($t.Year, $t.Month, $t.Day, 0, 0, 0, $t.Kind)
+    $base = [datetimeoffset]::new($t.Year, $t.Month, $t.Day, 0, 0, 0, $t.Offset)
     return $base.AddMinutes($total)
+}
+
+# Returns the UTC offset evidenced by the tickets' own dates (planned_end_date
+# preferred, created_at fallback). Falls back to the reference when no ticket
+# carries a parseable date.
+function Get-AccountOffset {
+    param($Tickets, [datetimeoffset]$Fallback)
+    foreach ($t in @($Tickets)) {
+        $d = ConvertTo-FSDateTimeOffset $t.planned_end_date
+        if ($null -ne $d) { return $d.Offset }
+    }
+    foreach ($t in @($Tickets)) {
+        $d = ConvertTo-FSDateTimeOffset $t.created_at
+        if ($null -ne $d) { return $d.Offset }
+    }
+    return $Fallback.Offset
 }
 
 # Returns $true when a ticket's planned_end_date should be bumped: the date is
@@ -140,11 +190,11 @@ function Round-Up-QuarterHour {
 function Should-Bump {
     param(
         [AllowNull()][string]$PlannedEndDate,
-        [datetime]$Now,
+        [datetimeoffset]$Now,
         [int]$WithinDays
     )
-    $at = [datetime]::MinValue
-    if ($PlannedEndDate -and [datetime]::TryParse($PlannedEndDate, [ref]$at)) {
+    $at = ConvertTo-FSDateTimeOffset $PlannedEndDate
+    if ($null -ne $at) {
         $cutoff = $Now.AddDays($WithinDays)
         # Has a due date. Leave alone unless it's past or within the window.
         if ($at -gt $Now -and ($WithinDays -le 0 -or $at -gt $cutoff)) {
@@ -182,11 +232,6 @@ if ($SessionCookie -match "PASTE_YOUR") {
 # Collect tickets (paginate until meta.has_next is false)
 # ---------------------------------------------------------------------------
 
-$now = [datetime]::UtcNow
-$target = Round-Up-QuarterHour (Add-BusinessDays -Start $now -Days $BusinessDays)
-$targetIso = $target.ToString("yyyy-MM-ddTHH:mm:ssZ")
-Write-Host ("Target planned_end_date: {0} (UTC)" -f $targetIso)
-
 $tickets = @()
 $page = 1
 $query = @{
@@ -199,12 +244,19 @@ $query = @{
 do {
     $query["page"] = $page
     $content = Invoke-FSGet -Path "tickets" -Query $query
-    $data = $content | ConvertFrom-Json
+    $data = $content | ConvertFrom-FSJson
     $tickets += @($data.tickets)
     $hasNext = $data.meta.has_next
     $page++
 } while ($hasNext -and $page -lt 1000)
 
+# The target must use the account timezone evidenced by the tickets' own
+# dates, so pushed dates carry the same offset as existing ones.
+$accountOffset = Get-AccountOffset -Tickets $tickets -Fallback ([datetimeoffset]::Now)
+$now = ([datetimeoffset]::Now).ToOffset($accountOffset)
+$target = Round-Up-QuarterHour (Add-BusinessDays -Start $now -Days $BusinessDays)
+$targetIso = Format-Iso8601 $target
+Write-Host ("Target planned_end_date: {0}" -f $targetIso)
 Write-Host ("Scanned {0} tickets" -f $tickets.Count)
 
 # ---------------------------------------------------------------------------

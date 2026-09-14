@@ -100,8 +100,43 @@ function Invoke-FSPut {
     return $resp.Content
 }
 
+# Parses API JSON. PowerShell 7.5+ keeps ISO timestamp strings verbatim via
+# -DateKind String; older versions parse them into DateTime (the date helpers
+# below convert those back to DateTimeOffset). Without this, timestamps are
+# converted to local time and the account offset is lost.
+function ConvertFrom-FSJson {
+    param([Parameter(Mandatory, ValueFromPipeline)][string]$Json)
+    if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey("DateKind")) {
+        return $Json | ConvertFrom-Json -DateKind String
+    }
+    return $Json | ConvertFrom-Json
+}
+
+# Converts an API timestamp (string, DateTime or DateTimeOffset) to a
+# DateTimeOffset that preserves the account's UTC offset. $null when absent or
+# unparseable.
+function ConvertTo-FSDateTimeOffset {
+    param([AllowNull()]$Value)
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [datetimeoffset]) { return $Value }
+    if ($Value -is [datetime]) { return [datetimeoffset]$Value }
+    $parsed = [datetimeoffset]::MinValue
+    if ([datetimeoffset]::TryParse([string]$Value, [ref]$parsed)) { return $parsed }
+    return $null
+}
+
+# Renders a DateTimeOffset as RFC 3339, using Z for a zero offset to match the
+# Go CLI.
+function Format-Iso8601 {
+    param([datetimeoffset]$Value)
+    if ($Value.Offset -eq [timespan]::Zero) {
+        return $Value.ToString("yyyy-MM-ddTHH:mm:ss") + "Z"
+    }
+    return $Value.ToString("yyyy-MM-ddTHH:mm:sszzz")
+}
+
 function Add-BusinessDays {
-    param([datetime]$Start, [int]$Days)
+    param([datetimeoffset]$Start, [int]$Days)
     $t = $Start
     $added = 0
     while ($added -lt $Days) {
@@ -113,19 +148,15 @@ function Add-BusinessDays {
     return $t
 }
 
-# Round up to the next quarter hour (:00/:15/:30/:45).
-function Get-Minutes {
-    param([datetime]$t)
-    return $t.Hour * 60 + $t.Minute
-}
-
+# Round up to the next quarter hour (:00/:15/:30/:45), keeping the timestamp's
+# own UTC offset (the account timezone).
 function Round-Up-QuarterHour {
-    param([datetime]$t)
-    $total = Get-Minutes $t
-    if ($t.Second -ne 0 -or ($total % 15) -ne 0) {
+    param([datetimeoffset]$t)
+    $total = $t.Hour * 60 + $t.Minute
+    if ($t.Second -ne 0 -or $t.Millisecond -ne 0 -or ($total % 15) -ne 0) {
         $total = [math]::Floor($total / 15) * 15 + 15
     }
-    $base = [datetime]::new($t.Year, $t.Month, $t.Day, 0, 0, 0, $t.Kind)
+    $base = [datetimeoffset]::new($t.Year, $t.Month, $t.Day, 0, 0, 0, $t.Offset)
     return $base.AddMinutes($total)
 }
 
@@ -184,7 +215,7 @@ $query = @{
 do {
     $query["page"] = $page
     $content = Invoke-FSGet -Path "tickets" -Query $query
-    $data = $content | ConvertFrom-Json
+    $data = $content | ConvertFrom-FSJson
     $tickets += @($data.tickets)
     $hasNext = $data.meta.has_next
     $page++
@@ -201,8 +232,11 @@ foreach ($t in $tickets) {
     if (-not (Should-FillStart -PlannedStartDate $t.planned_start_date -CreatedAt $t.created_at)) {
         continue
     }
-    $at = [datetime]::Parse($t.created_at)
-    $to = (Round-Up-QuarterHour $at).ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $at = ConvertTo-FSDateTimeOffset $t.created_at
+    if ($null -eq $at) {
+        continue   # created_at unparseable; leave it alone
+    }
+    $to = Format-Iso8601 (Round-Up-QuarterHour $at)
     $changes += [pscustomobject]@{
         Id   = $t.id
         From = $t.planned_start_date

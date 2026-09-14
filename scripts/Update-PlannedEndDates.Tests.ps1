@@ -27,19 +27,38 @@ function Assert-Equal {
 }
 
 Write-Host "== Add-BusinessDays ==" -ForegroundColor Cyan
-$fri = [datetime]"2026-08-07T12:00:00Z"   # Friday
-Assert-Equal (Add-BusinessDays -Start $fri -Days 1) ([datetime]"2026-08-10T12:00:00Z") "Fri +1 business day = Mon"
-Assert-Equal (Add-BusinessDays -Start $fri -Days 3) ([datetime]"2026-08-12T12:00:00Z") "Fri +3 business days = Wed"
-Assert-Equal (Add-BusinessDays -Start $fri -Days 0) $fri "Fri +0 = unchanged"
+$fri = [datetimeoffset]::Parse("2026-08-07T12:00:00+00:00")   # Friday
+Assert-Equal (Format-Iso8601 (Add-BusinessDays -Start $fri -Days 1)) "2026-08-10T12:00:00Z" "Fri +1 business day = Mon"
+Assert-Equal (Format-Iso8601 (Add-BusinessDays -Start $fri -Days 3)) "2026-08-12T12:00:00Z" "Fri +3 business days = Wed"
+Assert-Equal (Format-Iso8601 (Add-BusinessDays -Start $fri -Days 0)) "2026-08-07T12:00:00Z" "Fri +0 = unchanged"
+$friDubai = [datetimeoffset]::Parse("2026-08-07T12:00:00+04:00")
+Assert-Equal (Format-Iso8601 (Add-BusinessDays -Start $friDubai -Days 1)) "2026-08-10T12:00:00+04:00" "account offset survives business-day math"
 
 Write-Host "== Round-Up-QuarterHour ==" -ForegroundColor Cyan
-Assert-Equal (Round-Up-QuarterHour ([datetime]"2026-08-04T12:07:30Z")).ToString("HH:mm:ss") "12:15:00" "mid-quarter rounds up"
-Assert-Equal (Round-Up-QuarterHour ([datetime]"2026-08-04T12:15:00Z")).ToString("HH:mm:ss") "12:15:00" "exact boundary unchanged"
-Assert-Equal (Round-Up-QuarterHour ([datetime]"2026-08-04T12:15:30Z")).ToString("HH:mm:ss") "12:30:00" "boundary+seconds rounds up"
-Assert-Equal (Round-Up-QuarterHour ([datetime]"2026-08-04T23:59:59Z")).ToString("yyyy-MM-ddTHH:mm:ssZ") "2026-08-05T00:00:00Z" "day rollover"
+Assert-Equal (Round-Up-QuarterHour ([datetimeoffset]::Parse("2026-08-04T12:07:30+00:00"))).ToString("HH:mm:ss") "12:15:00" "mid-quarter rounds up"
+Assert-Equal (Round-Up-QuarterHour ([datetimeoffset]::Parse("2026-08-04T12:15:00+00:00"))).ToString("HH:mm:ss") "12:15:00" "exact boundary unchanged"
+Assert-Equal (Round-Up-QuarterHour ([datetimeoffset]::Parse("2026-08-04T12:15:30+00:00"))).ToString("HH:mm:ss") "12:30:00" "boundary+seconds rounds up"
+Assert-Equal (Format-Iso8601 (Round-Up-QuarterHour ([datetimeoffset]::Parse("2026-08-04T23:59:59+00:00")))) "2026-08-05T00:00:00Z" "day rollover"
+
+Write-Host "== Offset preservation (account timezone) ==" -ForegroundColor Cyan
+# Regression: timestamps used to be parsed into local time and formatted with
+# a literal Z, so on a non-UTC machine 12:07:30Z became 19:15:00Z.
+Assert-Equal (Format-Iso8601 (Round-Up-QuarterHour ([datetimeoffset]::Parse("2026-08-04T12:07:30+04:00")))) "2026-08-04T12:15:00+04:00" "rounds account wall clock, keeps +04:00"
+Assert-Equal (Format-Iso8601 ([datetimeoffset]::Parse("2026-08-04T12:15:00+00:00"))) "2026-08-04T12:15:00Z" "zero offset renders as Z"
+
+Write-Host "== Get-AccountOffset ==" -ForegroundColor Cyan
+$fallback = [datetimeoffset]::Parse("2026-08-04T00:00:00+00:00")
+$tickets = @(
+    [pscustomobject]@{ planned_end_date = $null; created_at = "2026-08-01T10:00:00+04:00" },
+    [pscustomobject]@{ planned_end_date = "2026-08-05T09:00:00+04:00"; created_at = "2026-08-01T10:00:00+04:00" }
+)
+Assert-Equal (Get-AccountOffset -Tickets $tickets -Fallback $fallback).ToString() "04:00:00" "offset derived from ticket dates"
+$ticketsCreatedOnly = @([pscustomobject]@{ planned_end_date = $null; created_at = "2026-08-01T10:00:00+05:30" })
+Assert-Equal (Get-AccountOffset -Tickets $ticketsCreatedOnly -Fallback $fallback).ToString() "05:30:00" "created_at fallback"
+Assert-Equal (Get-AccountOffset -Tickets @() -Fallback $fallback).ToString() "00:00:00" "fallback offset when no dates"
 
 Write-Host "== Should-Bump (WithinDays=7, now=2026-08-04T12:00Z) ==" -ForegroundColor Cyan
-$now = [datetime]"2026-08-04T12:00:00Z"
+$now = [datetimeoffset]::Parse("2026-08-04T12:00:00+00:00")
 Assert-Equal (Should-Bump -PlannedEndDate $null -Now $now -WithinDays 7) $true "null date bumps"
 Assert-Equal (Should-Bump -PlannedEndDate "2026-08-01T10:00:00Z" -Now $now -WithinDays 7) $true "past date bumps"
 Assert-Equal (Should-Bump -PlannedEndDate "2026-08-08T10:00:00Z" -Now $now -WithinDays 7) $true "within 7d bumps"
