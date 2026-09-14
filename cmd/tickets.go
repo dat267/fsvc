@@ -444,18 +444,30 @@ type TicketsPushEndDatesCmd struct {
 }
 
 func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error {
+	list, err := SelfAssignedTickets(c.PerPage).List(ctx, client, 1)
+	if err != nil {
+		return err
+	}
+
+	// planned_end_date is interpreted in the account timezone. Use the zone
+	// evidenced by the ticket dates unless --time-zone was set explicitly.
 	base := nowInTZ()
+	if tz == "" {
+		if loc := ticketLocation(list); loc != nil {
+			base = now().In(loc)
+		}
+	}
 	target := TargetEndDate(base, c.Days, c.EndHour).Format(time.RFC3339)
 
 	var changes []pendingChange
-	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
+	for _, t := range list {
 		cur := ""
 		if t.PlannedEndDate != nil {
 			cur = t.PlannedEndDate.Format(time.RFC3339)
 		}
 
 		if !ShouldPushEnd(t.PlannedEndDate, base, c.WithinHours) {
-			return nil
+			continue
 		}
 
 		changes = append(changes, pendingChange{
@@ -465,12 +477,26 @@ func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error 
 			to:    target,
 			body:  map[string]any{"planned_end_date": target},
 		})
-		return nil
-	}); err != nil {
-		return err
 	}
 
 	return previewAndApply(ctx, client, changes, c.Yes)
+}
+
+// ticketLocation returns the account timezone as evidenced by the ticket
+// dates (planned_end_date preferred, created_at fallback), or nil when no
+// ticket carries a date.
+func ticketLocation(tickets []Ticket) *time.Location {
+	for _, t := range tickets {
+		if t.PlannedEndDate != nil {
+			return t.PlannedEndDate.Location()
+		}
+	}
+	for _, t := range tickets {
+		if !t.CreatedAt.IsZero() {
+			return t.CreatedAt.Location()
+		}
+	}
+	return nil
 }
 
 // ---- sync-ui ----------------------------------------------------------------

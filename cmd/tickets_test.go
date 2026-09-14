@@ -937,3 +937,73 @@ func TestChangeSetApply_ReportsError(t *testing.T) {
 		t.Errorf("expected wrapped update error, got %v (out: %q)", err, out)
 	}
 }
+
+// The pushed planned_end_date must carry the same timezone offset as the
+// ticket's existing dates (the Freshservice account timezone), not the CLI
+// machine's local zone.
+func TestTicketsPushEndDatesCmd_MatchesTicketTimezone(t *testing.T) {
+	setNow(t, time.Date(2026, 8, 4, 12, 7, 30, 0, time.UTC)) // Tue 16:07:30+04
+	oldTZ := tz
+	tz = ""
+	t.Cleanup(func() { tz = oldTZ })
+
+	var putBody []byte
+	var mu sync.Mutex
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_end_date":null,"created_at":"2026-08-01T10:00:00+04:00"}],"meta":{"has_next":false}}`)
+	})
+	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		putBody = b
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	out := captureStdout(t, func() {
+		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, PerPage: 100, EndHour: -1}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	mu.Lock()
+	body := string(putBody)
+	mu.Unlock()
+	want := `{"planned_end_date":"2026-08-07T16:15:00+04:00"}`
+	if body != want {
+		t.Errorf("expected %s, got %q (output: %q)", want, body, out)
+	}
+}
+
+func TestTicketLocation(t *testing.T) {
+	dubai := time.FixedZone("GST", 4*3600)
+	at := time.Date(2026, 8, 1, 10, 0, 0, 0, dubai)
+	utc := time.Date(2026, 8, 2, 9, 0, 0, 0, time.UTC)
+
+	// planned_end_date wins over created_at.
+	got := ticketLocation([]Ticket{{PlannedEndDate: &at, CreatedAt: utc}})
+	if got == nil || got != dubai {
+		t.Errorf("expected planned_end_date zone, got %v", got)
+	}
+	// created_at fallback when no planned_end_date.
+	got = ticketLocation([]Ticket{{CreatedAt: utc}})
+	if got == nil || got != time.UTC {
+		t.Errorf("expected created_at zone, got %v", got)
+	}
+	// no dates at all.
+	if got := ticketLocation([]Ticket{{}}); got != nil {
+		t.Errorf("expected nil for undated tickets, got %v", got)
+	}
+	// skips a nil planned_end_date before finding a later one.
+	got = ticketLocation([]Ticket{{}, {PlannedEndDate: &at}})
+	if got == nil || got != dubai {
+		t.Errorf("expected later planned_end_date zone, got %v", got)
+	}
+}
