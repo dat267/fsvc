@@ -1,16 +1,16 @@
 #!/usr/bin/env pwsh
-# Get-TicketContents.Tests.ps1
+# Get-TicketContent.Tests.ps1
 #
-# Regression tests for Get-TicketContents.ps1 (zero dependencies, no Pester).
+# Regression tests for Get-TicketContent.ps1 (zero dependencies, no Pester).
 # Dot-sources the script so its helper functions can be exercised without
 # touching the network.
 #
-#   pwsh scripts/Get-TicketContents.Tests.ps1
+#   pwsh scripts/Get-TicketContent.Tests.ps1
 
 $ErrorActionPreference = "Stop"
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $here "Get-TicketContents.ps1")
+. (Join-Path $here "Get-TicketContent.ps1")
 
 $failures = 0
 

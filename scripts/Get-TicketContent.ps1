@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Get-TicketContents.ps1
+# Get-TicketContent.ps1
 #
 # Standalone script (not part of the fsvc CLI) that shows one Freshservice
 # ticket and its conversation trace from the private API (/api/_/). Mirrors
@@ -20,13 +20,13 @@
 #   Fill in the CONFIG variables below, then run:
 #
 #   # print a readable summary to the terminal (default)
-#   pwsh scripts/Get-TicketContents.ps1 -Id 10100
+#   pwsh scripts/Get-TicketContent.ps1 -Id 10100
 #
 #   # emit raw objects instead, for piping. Run this form inside a PowerShell
 #   # session: a child `pwsh script.ps1` process serialises its output to text,
 #   # so only same-session invocation lets objects reach the next command.
-#   ./scripts/Get-TicketContents.ps1 -Id 10100 -AsObject | ConvertTo-Json -Depth 10
-#   ./scripts/Get-TicketContents.ps1 -Id 10100 -AsObject | Select-Object -ExpandProperty Conversations
+#   ./scripts/Get-TicketContent.ps1 -Id 10100 -AsObject | ConvertTo-Json -Depth 10
+#   ./scripts/Get-TicketContent.ps1 -Id 10100 -AsObject | Select-Object -ExpandProperty Conversations
 
 param(
     [Parameter(Position = 0)]
@@ -234,7 +234,7 @@ function Format-TicketContents {
     return ($lines -join "`n")
 }
 
-# Allow dot-sourcing: `path . Get-TicketContents.ps1` defines the helper
+# Allow dot-sourcing: `path . Get-TicketContent.ps1` defines the helper
 # functions without running the script body. Run it directly to fetch a ticket.
 if ($MyInvocation.InvocationName -eq '.') { return }
 
