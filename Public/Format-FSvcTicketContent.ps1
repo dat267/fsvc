@@ -43,13 +43,11 @@ function Format-FSvcTicketContent {
         $lines.Add(("Conversations ({0})" -f $conversations.Count))
         $lines.Add("")
         $n = 0
-        foreach ($c in $conversations) {
+        foreach ($raw in $conversations) {
+            $c = ConvertTo-FSvcConversationView $raw
             $n++
-            $author = if ($c.user -and $c.user.name) { $c.user.name } else { $c.user_id }
-            $dir = if ($c.incoming) { 'incoming' } else { 'outgoing' }
-            $lines.Add(("--- [{0}] {1} ({2}, {3})" -f $n, $author, $dir, $c.created_at))
-            $body = if ($c.body_text) { $c.body_text } else { $c.body }
-            if ($body) { $lines.Add("$body") } else { $lines.Add("(no body)") }
+            $lines.Add(("--- [{0}] {1} ({2}, {3})" -f $n, $c.Author, $c.Direction, (Format-Iso8601 $c.At)))
+            if ($c.Body) { $lines.Add($c.Body) } else { $lines.Add("(no body)") }
             $lines.Add("")
         }
         ($lines -join "`n")

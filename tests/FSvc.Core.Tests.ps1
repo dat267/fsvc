@@ -112,6 +112,20 @@ Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $stale -LatestConve
 $empty = [pscustomobject]@{ created_at = $null; planned_end_date = $null }
 Assert-Equal (Get-FSvcPlannedEndDate -Ticket $empty -LatestConversationAt $null -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero) $null "no base date yields no target"
 
+Write-Host "== ConvertTo-FSvcConversationView ==" -ForegroundColor Cyan
+$raw1 = [pscustomobject]@{ id = 1; user_id = 2100; user = [pscustomobject]@{ name = "Nadia" }; incoming = $true; created_at = "2026-08-01T10:30:00+04:00"; body_text = "hello"; body = "<p>hello</p>" }
+$v1 = ConvertTo-FSvcConversationView $raw1
+Assert-Equal $v1.Author "Nadia" "nested user name preferred"
+Assert-Equal $v1.UserId 2100 "user id preserved"
+Assert-Equal $v1.Direction "incoming" "incoming direction"
+Assert-Equal (Format-Iso8601 $v1.At) "2026-08-01T10:30:00+04:00" "timestamp parsed with offset"
+Assert-Equal $v1.Body "hello" "body_text preferred over body"
+$raw2 = [pscustomobject]@{ id = 2; user_id = 99; incoming = $false; created_at = "2026-08-01T11:00:00Z"; body = "<p>hi</p>" }
+$v2 = ConvertTo-FSvcConversationView $raw2
+Assert-Equal $v2.Author "99" "numeric author fallback"
+Assert-Equal $v2.Direction "outgoing" "outgoing direction"
+Assert-Equal $v2.Body "<p>hi</p>" "body fallback when no body_text"
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

@@ -36,7 +36,7 @@ function Get-FSvcTicketOverview {
         $latest = Get-FSvcLatestConversation -TicketId $t.id -Config $cfg
         $lastMessage = $null
         $lastUser = [int64]0
-        if ($null -ne $latest) { $lastMessage = $latest.CreatedAt; $lastUser = $latest.UserID }
+        if ($null -ne $latest) { $lastMessage = $latest.At; $lastUser = $latest.UserId }
         $category = Get-FSvcTicketCategory -ResponderID $t.responder_id -LastMessage $lastMessage -LastUserID $lastUser -CreatedAt (ConvertTo-FSDateTimeOffset $t.created_at) -OlderThanDays $OlderThanDays -Now $now
         if ($category -ne 'waiting' -and $category -ne 'awaiting_agent') { continue }
         $ref = ConvertTo-FSDateTimeOffset $t.created_at

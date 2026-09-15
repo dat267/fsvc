@@ -29,12 +29,25 @@ function Get-FSvcLatestConversation {
     $data = (Invoke-FSvcGet -Path ("tickets/{0}/conversations" -f $TicketId) -Query $query -Config $Config) | ConvertFrom-FSvcJson
     $c = @($data.conversations) | Select-Object -First 1
     if ($null -eq $c) { return $null }
+    return ConvertTo-FSvcConversationView $c
+}
+
+# Normalises a raw API conversation (or the latest-conversation response) into
+# the single shape consumers use: Id, Author (nested user name else user_id),
+# UserId, Direction, At, Body (body_text preferred over body).
+function ConvertTo-FSvcConversationView {
+    param([AllowNull()]$Conversation)
+    if ($null -eq $Conversation) { return $null }
+    $author = if ($Conversation.user -and $Conversation.user.name) { [string]$Conversation.user.name } else { [string]$Conversation.user_id }
+    $direction = if ($Conversation.incoming) { 'incoming' } else { 'outgoing' }
+    $body = if ($Conversation.body_text) { [string]$Conversation.body_text } elseif ($Conversation.body) { [string]$Conversation.body } else { '' }
     return [pscustomobject]@{
-        Id        = $c.id
-        CreatedAt = ConvertTo-FSDateTimeOffset $c.created_at
-        UserID    = [int64]$c.user_id
-        Body      = $c.body_text
-        Incoming  = [bool]$c.incoming
+        Id        = $Conversation.id
+        Author    = $author
+        UserId    = [int64]$Conversation.user_id
+        Direction = $direction
+        At        = ConvertTo-FSDateTimeOffset $Conversation.created_at
+        Body      = $body
     }
 }
 

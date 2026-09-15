@@ -39,7 +39,7 @@ function Update-FSvcPlannedEndDates {
     $changes = @()
     foreach ($t in $tickets) {
         $latest = Get-FSvcLatestConversation -TicketId $t.id -Config $cfg
-        $latestAt = if ($null -ne $latest) { $latest.CreatedAt } else { $null }
+        $latestAt = if ($null -ne $latest) { $latest.At } else { $null }
         $target = Get-FSvcPlannedEndDate -Ticket $t -LatestConversationAt $latestAt -Now $now `
             -BusinessDays $BusinessDays -TargetHour $TargetHour -Zone $zone -Offset $offset
         if ($null -eq $target) { continue }

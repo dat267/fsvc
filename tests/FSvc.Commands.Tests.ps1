@@ -128,6 +128,30 @@ Assert-Equal $out[0].Applied $false "-WhatIf marks not applied"
 Assert-True (-not (@($script:StubCalls | Where-Object { $_.Method -eq 'PUT' }).Count)) "-WhatIf issues no PUT"
 $script:FSvcTransport = $null
 
+Write-Host "== Format-FSvcTicketContent ==" -ForegroundColor Cyan
+$contentObj = [pscustomobject]@{
+    Ticket        = [pscustomobject]@{ id = 10; display_id = 10; subject = "T"; status_name = "Open"; created_at = "2026-09-01T10:00:00+04:00" }
+    Conversations = @(
+        [pscustomobject]@{ id = 1; user_id = 2100; user = [pscustomobject]@{ name = "Nadia" }; incoming = $true; created_at = "2026-09-01T10:30:00+04:00"; body_text = "please fix" },
+        [pscustomobject]@{ id = 2; user_id = 3100; incoming = $false; created_at = "2026-09-01T11:00:00+04:00"; body = "<p>will do</p>" }
+    )
+}
+$text = $contentObj | Format-FSvcTicketContent
+Assert-True ($text -match "Ticket #10 - T") "title"
+Assert-True ($text -match "Nadia \(incoming, 2026-09-01T10:30:00\+04:00\)") "author, direction and timestamp line"
+Assert-True ($text -match "please fix") "body_text rendered"
+Assert-True ($text -match "3100 \(outgoing") "numeric author, outgoing"
+Assert-True ($text -match "will do") "body fallback rendered"
+
+Write-Host "== Get-FSvcLatestConversation view ==" -ForegroundColor Cyan
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
+New-StubTransport -Handler { param($Request) '{"conversations":[{"id":1,"user_id":2100,"user":{"name":"Nadia"},"incoming":true,"created_at":"2026-09-01T10:30:00+04:00","body_text":"x"}],"meta":{"has_next":false}}' }
+$lc = Get-FSvcLatestConversation -TicketId 5 -Config $script:FSvcConfig
+Assert-Equal $lc.Author "Nadia" "latest conversation is a view with author"
+Assert-Equal $lc.Direction "incoming" "latest conversation direction"
+Assert-Equal (Format-Iso8601 $lc.At) "2026-09-01T10:30:00+04:00" "latest conversation timestamp"
+$script:FSvcTransport = $null
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green
