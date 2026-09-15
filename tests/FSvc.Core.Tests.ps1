@@ -233,6 +233,19 @@ $fu = New-FSvcOverviewRow -Category 'awaiting_agent' -Ticket ([pscustomobject]@{
 Assert-Equal $fu.Unanswered 3 "Unanswered passes through the row builder"
 Assert-True ($null -eq (New-FSvcOverviewRow -Category 'unassigned' -Ticket ([pscustomobject]@{ id = 7; subject = 's' }) -RawDays 1 -Since $null -Unanswered $null -BaseUrl 'http://x').Unanswered) "unassigned rows leave Unanswered null"
 
+Write-Host "== HTTP session reuse ==" -ForegroundColor Cyan
+$s1 = Get-FSvcWebSession -Config @{ BaseUrl = 'https://a.example' }
+$s2 = Get-FSvcWebSession -Config @{ BaseUrl = 'https://a.example' }
+$s3 = Get-FSvcWebSession -Config @{ BaseUrl = 'https://b.example' }
+Assert-True ($s1 -is [Microsoft.PowerShell.Commands.WebRequestSession]) "returns a WebRequestSession"
+Assert-True ([object]::ReferenceEquals($s1, $s2)) "same base URL reuses one session"
+Assert-True (-not [object]::ReferenceEquals($s1, $s3)) "different base URL gets its own session"
+$s4 = Get-FSvcWebSession -Config @{ BaseUrl = 'https://a.example'; ItildeskSession = 'abc' }
+$s5 = Get-FSvcWebSession -Config @{ BaseUrl = 'https://a.example'; ItildeskSession = 'abc' }
+$s6 = Get-FSvcWebSession -Config @{ BaseUrl = 'https://a.example'; ItildeskSession = 'xyz' }
+Assert-True ([object]::ReferenceEquals($s4, $s5)) "same base URL and cookie reuses the session"
+Assert-True (-not [object]::ReferenceEquals($s4, $s6)) "a changed cookie gets a fresh session"
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green
