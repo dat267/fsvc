@@ -120,7 +120,9 @@ Get-FSvcTicketOverview -OlderThanDays 2 | Where-Object Category -eq 'waiting'
 `Get-FSvcTicketOverview` rows are grouped `unassigned`, `waiting`, `awaiting_agent`
 and sorted by `Days` descending within each group. `Days` is a numeric business-day
 count (weekends skipped, holidays not modelled) measured from `Since` -- `created_at`
-for unassigned rows, the last message otherwise; `Elapsed` is the same value
+for unassigned rows, the last message otherwise. `Since` keeps the account's own UTC
+offset and renders as RFC 3339 (`2026-08-27T11:44:02+04:00`), so it is unaffected by the
+host machine's timezone; `Elapsed` is the same value
 humanized (`13d 14h`, or `1h 30m` below a day). `Unanswered` counts the customer messages an agent has not answered yet (the consecutive incoming run since the last agent message), shown as `-` when there are none or the row is unassigned. `Id` stays a property even though the default view omits it.
 ```powershell
 Set-FSvcPlannedStartDates -WhatIf
