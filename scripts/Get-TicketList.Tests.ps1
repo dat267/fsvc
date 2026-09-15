@@ -52,6 +52,11 @@ Assert-True ($url2 -match "%5B%7B%22condition%22") "query_hash mode: JSON is URL
 # empty query leaves path intact
 Assert-Equal (Append-Query -Path "tickets" -QueryString "") "tickets" "empty query leaves path intact"
 
+Write-Host "== Resolve-FSConfigValue (shared env overrides embedded config) ==" -ForegroundColor Cyan
+Assert-Equal (Resolve-FSConfigValue -Environment "from-env" -Default "embedded") "from-env" "env value wins"
+Assert-Equal (Resolve-FSConfigValue -Environment "" -Default "embedded") "embedded" "empty env falls back"
+Assert-Equal (Resolve-FSConfigValue -Environment $null -Default "embedded") "embedded" "null env falls back"
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red

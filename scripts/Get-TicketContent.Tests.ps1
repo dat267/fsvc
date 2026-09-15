@@ -135,6 +135,11 @@ Assert-Match $parsedOut "2026-08-01T10:30:00\+04:00" "conversation timestamp kee
 Assert-Equal (Format-Timestamp ([datetimeoffset]::Parse("2026-08-01T10:00:00+04:00"))) "2026-08-01T10:00:00+04:00" "Format-Timestamp renders ISO offset"
 Assert-Equal (('{"t":"piped"}' | ConvertFrom-FSJson).t) "piped" "accepts JSON from the pipeline"
 
+Write-Host "== Resolve-FSConfigValue (shared env overrides embedded config) ==" -ForegroundColor Cyan
+Assert-Equal (Resolve-FSConfigValue -Environment "from-env" -Default "embedded") "from-env" "env value wins"
+Assert-Equal (Resolve-FSConfigValue -Environment "" -Default "embedded") "embedded" "empty env falls back"
+Assert-Equal (Resolve-FSConfigValue -Environment $null -Default "embedded") "embedded" "null env falls back"
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red

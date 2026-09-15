@@ -34,12 +34,23 @@ param(
     [switch]$AsObject      # emit { Ticket, Conversations } to the pipeline instead of printing
 )
 
+# Resolves a config value: a non-empty environment variable wins over the
+# value embedded in the script, so a shared set of credentials can drive every
+# standalone script without editing each file. Recognised variables:
+#   FSVC_SUBDOMAIN, FSVC_ITILDESK_SESSION, FSVC_CSRF_TOKEN, FSVC_BASE_URL,
+#   FSVC_LOG_PATH, FSVC_TZ, FSVC_UTC_OFFSET
+function Resolve-FSConfigValue {
+    param([AllowNull()][string]$Environment, [AllowNull()][string]$Default)
+    if ($Environment) { return $Environment }
+    return $Default
+}
+
 # ---------------------------------------------------------------------------
 # CONFIG - edit these before running
 # ---------------------------------------------------------------------------
 
-$Subdomain     = "acme"                   # your Freshservice subdomain
-$SessionCookie = "PASTE_YOUR_itildesk_session_VALUE_HERE"
+$Subdomain     = Resolve-FSConfigValue -Environment $env:FSVC_SUBDOMAIN -Default "acme"
+$SessionCookie = Resolve-FSConfigValue -Environment $env:FSVC_ITILDESK_SESSION -Default "PASTE_YOUR_itildesk_session_VALUE_HERE"
 
 $PerPage       = 100                      # conversations per page
 $MaxPages      = 1000                     # safety cap on pagination
@@ -48,7 +59,7 @@ $MaxPages      = 1000                     # safety cap on pagination
 # Request helpers
 # ---------------------------------------------------------------------------
 
-$BaseUrl = "https://$Subdomain.freshservice.com"
+$BaseUrl = Resolve-FSConfigValue -Environment $env:FSVC_BASE_URL -Default "https://$Subdomain.freshservice.com"
 
 # Builds a query string (without leading ?) from a hashtable of params.
 function Build-QueryString {

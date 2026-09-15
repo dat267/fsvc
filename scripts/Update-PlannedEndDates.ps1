@@ -49,18 +49,29 @@
 #   - The session cookie and CSRF token still expire manually; refresh them
 #     when the task starts reporting failures.
 
+# Resolves a config value: a non-empty environment variable wins over the
+# value embedded in the script, so a shared set of credentials can drive every
+# standalone script without editing each file. Recognised variables:
+#   FSVC_SUBDOMAIN, FSVC_ITILDESK_SESSION, FSVC_CSRF_TOKEN, FSVC_BASE_URL,
+#   FSVC_LOG_PATH, FSVC_TZ, FSVC_UTC_OFFSET
+function Resolve-FSConfigValue {
+    param([AllowNull()][string]$Environment, [AllowNull()][string]$Default)
+    if ($Environment) { return $Environment }
+    return $Default
+}
+
 # ---------------------------------------------------------------------------
 # CONFIG - edit these before running
 # ---------------------------------------------------------------------------
 
-$Subdomain    = "acme"                   # your Freshservice subdomain
-$SessionCookie = "PASTE_YOUR_itildesk_session_VALUE_HERE"
-$CsrfToken     = "PASTE_YOUR_X-CSRF-Token_VALUE_HERE"   # required for PUT
+$Subdomain    = Resolve-FSConfigValue -Environment $env:FSVC_SUBDOMAIN -Default "acme"
+$SessionCookie = Resolve-FSConfigValue -Environment $env:FSVC_ITILDESK_SESSION -Default "PASTE_YOUR_itildesk_session_VALUE_HERE"
+$CsrfToken     = Resolve-FSConfigValue -Environment $env:FSVC_CSRF_TOKEN -Default "PASTE_YOUR_X-CSRF-Token_VALUE_HERE"
 
 $BusinessDays = 3                        # business days from the last comment to set the end date
 $TargetHour   = 17                       # 0-23: hour of day for the new planned_end_date
-$TimeZoneId   = ""                       # Windows or IANA id, e.g. "Arabian Standard Time" or "Asia/Dubai"
-$UtcOffset    = "+04:00"                # used when $TimeZoneId is empty; "" keeps the comment's own offset
+$TimeZoneId   = Resolve-FSConfigValue -Environment $env:FSVC_TZ -Default ""
+$UtcOffset    = Resolve-FSConfigValue -Environment $env:FSVC_UTC_OFFSET -Default "+04:00"
 
 # query_hash filter (JSON array of conditions). Default: self-assigned
 # unresolved tickets, same as the CLI's push-end-dates command.
@@ -71,13 +82,13 @@ $Filter = @'
 $PerPage  = 100
 $Confirm  = $true                        # prompt before applying (interactive runs)
 $NonInteractive = $false                 # $true for scheduled tasks: never prompt, always apply
-$LogPath  = ""                           # e.g. "C:\logs\fsvc-end-dates.log"; "" disables logging
+$LogPath  = Resolve-FSConfigValue -Environment $env:FSVC_LOG_PATH -Default ""
 
 # ---------------------------------------------------------------------------
 # Session / request header helpers (keep the server's rotated cookie in sync)
 # ---------------------------------------------------------------------------
 
-$BaseUrl = "https://$Subdomain.freshservice.com"
+$BaseUrl = Resolve-FSConfigValue -Environment $env:FSVC_BASE_URL -Default "https://$Subdomain.freshservice.com"
 
 # Builds a query string (without leading ?) from a hashtable of params.
 function Build-QueryString {

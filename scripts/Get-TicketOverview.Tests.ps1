@@ -71,6 +71,11 @@ Assert-Equal (Format-OverviewLink -BaseUrl "https://acme.freshservice.com" -Id 1
 Assert-Equal (Format-Days -Days 2.0) "2.0" "days rendered with one decimal"
 Assert-Equal (Format-Days -Days 2.25) "2.3" "days rounded to one decimal"
 
+Write-Host "== Resolve-FSConfigValue (shared env overrides embedded config) ==" -ForegroundColor Cyan
+Assert-Equal (Resolve-FSConfigValue -Environment "from-env" -Default "embedded") "from-env" "env value wins"
+Assert-Equal (Resolve-FSConfigValue -Environment "" -Default "embedded") "embedded" "empty env falls back"
+Assert-Equal (Resolve-FSConfigValue -Environment $null -Default "embedded") "embedded" "null env falls back"
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red
