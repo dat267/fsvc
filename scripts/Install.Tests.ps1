@@ -104,6 +104,16 @@ Assert-Equal $files.Count 2 "only .ps1 files are installed"
 Assert-True (($files | Where-Object { $_ -like "*A.ps1" }).Count -eq 1) "A.ps1 included"
 Remove-Item -LiteralPath $srcDir -Recurse -Force
 
+Write-Host "== Get-FSvcDefaultInstallDir ==" -ForegroundColor Cyan
+# Windows installs under %LOCALAPPDATA%\fsvc so the home folder stays clean;
+# other platforms fall back to a hidden ~/.fsvc.
+$winLocal = [System.IO.Path]::Combine("C:\Users\me\AppData\Local", "fsvc")
+$winHome = [System.IO.Path]::Combine("C:\Users\me", ".fsvc")
+$nixHome = [System.IO.Path]::Combine("/home/me", ".fsvc")
+Assert-Equal (Get-FSvcDefaultInstallDir -LocalAppData "C:\Users\me\AppData\Local" -UserHome "C:\Users\me" -OnWindows $true) $winLocal "windows uses LOCALAPPDATA"
+Assert-Equal (Get-FSvcDefaultInstallDir -LocalAppData "" -UserHome "C:\Users\me" -OnWindows $true) $winHome "windows without LOCALAPPDATA falls back to ~/.fsvc"
+Assert-Equal (Get-FSvcDefaultInstallDir -LocalAppData "C:\ignored" -UserHome "/home/me" -OnWindows $false) $nixHome "non-windows uses ~/.fsvc"
+
 Write-Host "== Get-FSvcDownloadPlan ==" -ForegroundColor Cyan
 $plan = Get-FSvcDownloadPlan -RemoteBaseUrl "https://example.com/scripts/" -Names @("A.ps1", "B.ps1")
 Assert-Equal $plan.Count 2 "one entry per script"

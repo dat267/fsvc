@@ -15,7 +15,8 @@
 # your shell.
 #
 # Usage:
-#   # install to ~/fsvc and record shared config for future shells
+#   # install to the default folder (%LOCALAPPDATA%\fsvc on Windows, ~/.fsvc
+#   # elsewhere) and record shared config for future shells
 #   pwsh scripts/Install.ps1 -AddToPath `
 #        -Subdomain acme -Session "<cookie>" -CsrfToken "<token>" -LogPath "C:\logs\fsvc.log"
 #
@@ -36,7 +37,7 @@
 # profile (handy for testing).
 
 param(
-    [string]$Destination = (Join-Path $HOME "fsvc"),
+    [string]$Destination = "",
     [string]$ProfilePath = $PROFILE,
     [switch]$AddToPath,
     [switch]$Uninstall,
@@ -143,6 +144,26 @@ function Update-FSvcProfile {
     Set-Content -LiteralPath $ProfilePath -Value $cleaned -NoNewline
 }
 
+# True on Windows, across Windows PowerShell 5.1 (which has no $IsWindows)
+# and PowerShell 7+.
+function Test-IsWindowsHost {
+    if ($null -ne $IsWindows) { return [bool]$OnWindows }
+    return ($env:OS -eq "Windows_NT")
+}
+
+# Default install folder: %LOCALAPPDATA%\fsvc on Windows so the home folder
+# stays clean, else the hidden ~/.fsvc. Pass -Destination to override.
+function Get-FSvcDefaultInstallDir {
+    param([AllowNull()][string]$LocalAppData, [AllowNull()][string]$UserHome, [bool]$OnWindows)
+    if ($OnWindows -and $LocalAppData) {
+        return [System.IO.Path]::Combine($LocalAppData, "fsvc")
+    }
+    if ($UserHome) {
+        return [System.IO.Path]::Combine($UserHome, ".fsvc")
+    }
+    return [System.IO.Path]::Combine(".", "fsvc")
+}
+
 # The .ps1 files to install from a source directory.
 function Get-FSvcInstallFiles {
     param([string]$SourceDir)
@@ -205,6 +226,10 @@ if ($MyInvocation.InvocationName -eq '.') { return }
 # When piped through iex / a scriptblock there is no script path; calling exit
 # would close the caller's shell, so terminate with return instead.
 $inMemory = [string]::IsNullOrEmpty($PSScriptRoot)
+
+if (-not $Destination) {
+    $Destination = Get-FSvcDefaultInstallDir -LocalAppData $env:LOCALAPPDATA -UserHome $HOME -OnWindows (Test-IsWindowsHost)
+}
 
 # --- uninstall ---------------------------------------------------------------
 
