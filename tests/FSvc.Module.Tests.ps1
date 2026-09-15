@@ -30,15 +30,26 @@ Assert-True (-not ($exported -contains 'Invoke-FSvcGet')) "private helpers are n
 
 Write-Host "== Config round-trip ==" -ForegroundColor Cyan
 $tempProfile = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-module-" + [guid]::NewGuid().ToString() + ".ps1")
+$isWindowsHost = if ($null -ne $IsWindows) { [bool]$IsWindows } else { $env:OS -eq 'Windows_NT' }
 # Keep persistence out of the real profile and user environment during tests.
-& (Get-Module fsvc) { $script:FSvcSetUserEnvironment = { param($n, $v) } }
+$persistCalls = [System.Collections.Generic.List[object]]::new()
+$stub = { param($n, $v) $persistCalls.Add([pscustomobject]@{ Name = $n; Value = $v }) }
+& (Get-Module fsvc) { param($s) $script:FSvcSetUserEnvironment = $s } $stub
 Set-FSvcConfig -Subdomain acme -SessionCookie secret -CsrfToken tok -ProfilePath $tempProfile
 $cfg = Get-FSvcConfig
 Assert-True ($cfg.Subdomain -eq 'acme') "config stored"
 Assert-True ($cfg.SessionCookie -eq '<set>') "session is masked in output"
 Assert-True ($cfg.BaseUrl -eq 'https://acme.freshservice.com') "base url derived"
-$persisted = & (Get-Module fsvc) { param($p) Read-FSvcProfileSettings -ProfilePath $p } $tempProfile
-Assert-True ($persisted['FSVC_SUBDOMAIN'] -eq 'acme') "setting persisted for future sessions"
+# Persistence target differs by platform: user env vars on Windows, profile elsewhere.
+if ($isWindowsHost) {
+    $recorded = @{}
+    foreach ($c in $persistCalls) { $recorded[$c.Name] = $c.Value }
+    Assert-True ($recorded['FSVC_SUBDOMAIN'] -eq 'acme') "setting persisted as a user env var"
+    Assert-True (-not (Test-Path -LiteralPath $tempProfile)) "profile untouched on Windows"
+} else {
+    $persisted = & (Get-Module fsvc) { param($p) Read-FSvcProfileSettings -ProfilePath $p } $tempProfile
+    Assert-True ($persisted['FSVC_SUBDOMAIN'] -eq 'acme') "setting persisted in the profile"
+}
 & (Get-Module fsvc) { $script:FSvcSetUserEnvironment = $null }
 Remove-Item -LiteralPath $tempProfile -Force -ErrorAction SilentlyContinue
 
