@@ -57,17 +57,36 @@ $ticketsCreatedOnly = @([pscustomobject]@{ planned_end_date = $null; created_at 
 Assert-Equal (Get-AccountOffset -Tickets $ticketsCreatedOnly -Fallback $fallback).ToString() "05:30:00" "created_at fallback"
 Assert-Equal (Get-AccountOffset -Tickets @() -Fallback $fallback).ToString() "00:00:00" "fallback offset when no dates"
 
-Write-Host "== Should-Bump (WithinDays=7, now=2026-08-04T12:00Z) ==" -ForegroundColor Cyan
-$now = [datetimeoffset]::Parse("2026-08-04T12:00:00+00:00")
-Assert-Equal (Should-Bump -PlannedEndDate $null -Now $now -WithinDays 7) $true "null date bumps"
-Assert-Equal (Should-Bump -PlannedEndDate "2026-08-01T10:00:00Z" -Now $now -WithinDays 7) $true "past date bumps"
-Assert-Equal (Should-Bump -PlannedEndDate "2026-08-08T10:00:00Z" -Now $now -WithinDays 7) $true "within 7d bumps"
-Assert-Equal (Should-Bump -PlannedEndDate "2026-08-20T10:00:00Z" -Now $now -WithinDays 7) $false "beyond window left alone"
-Assert-Equal (Should-Bump -PlannedEndDate "garbage" -Now $now -WithinDays 7) $true "unparseable bumps"
+Write-Host "== End-date decision (tickets with an existing planned_end_date) ==" -ForegroundColor Cyan
+# Every scanned ticket is recomputed to last-comment + N business days; only
+# an identical instant is skipped. Future dates that are too far or too short
+# are corrected rather than left alone.
+$target = [datetimeoffset]::Parse("2026-08-07T17:00:00+04:00")
+Assert-Equal (Test-EndDateNeedsUpdate -PlannedEndDate $null -Target $target) $true "null planned end needs update"
+Assert-Equal (Test-EndDateNeedsUpdate -PlannedEndDate "2026-08-07T17:00:00+04:00" -Target $target) $false "identical instant (same offset) skipped"
+Assert-Equal (Test-EndDateNeedsUpdate -PlannedEndDate "2026-08-07T13:00:00Z" -Target $target) $false "identical instant (different offset) skipped"
+Assert-Equal (Test-EndDateNeedsUpdate -PlannedEndDate "2099-01-01T00:00:00Z" -Target $target) $true "far-future planned end corrected"
+Assert-Equal (Test-EndDateNeedsUpdate -PlannedEndDate "2020-01-01T00:00:00Z" -Target $target) $true "past planned end corrected"
+Assert-Equal (Test-EndDateNeedsUpdate -PlannedEndDate "garbage" -Target $target) $true "unparseable planned end corrected"
 
-Write-Host "== Should-Bump (WithinDays=0, window off) ==" -ForegroundColor Cyan
-Assert-Equal (Should-Bump -PlannedEndDate "2026-08-08T10:00:00Z" -Now $now -WithinDays 0) $false "future left alone when window off"
-Assert-Equal (Should-Bump -PlannedEndDate "2026-08-01T10:00:00Z" -Now $now -WithinDays 0) $true "past bumps when window off"
+Write-Host "== Clamp: planned end is always in the future ==" -ForegroundColor Cyan
+$nowTueNoon = [datetimeoffset]::Parse("2026-08-04T12:00:00+00:00")
+$oldBase = [datetimeoffset]::Parse("2026-07-01T09:00:00+00:00")
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $oldBase -Days 3 -Hour 17 -Zone $null -Offset $offZero -Now $nowTueNoon)) "2026-08-04T17:00:00Z" "stale comment: target clamped to today at the target hour"
+
+$nowTueEvening = [datetimeoffset]::Parse("2026-08-04T18:00:00+00:00")
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $oldBase -Days 3 -Hour 17 -Zone $null -Offset $offZero -Now $nowTueEvening)) "2026-08-05T17:00:00Z" "target hour already passed: clamp to next business day"
+
+$nowFriEvening = [datetimeoffset]::Parse("2026-08-07T18:00:00+00:00")
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $oldBase -Days 3 -Hour 17 -Zone $null -Offset $offZero -Now $nowFriEvening)) "2026-08-10T17:00:00Z" "Friday evening clamps to Monday"
+
+# A recent comment keeps the natural last-comment + 3 business days target.
+$recentBase = [datetimeoffset]::Parse("2026-08-03T09:00:00+00:00")   # Monday
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $recentBase -Days 3 -Hour 17 -Zone $null -Offset $offZero -Now $nowTueNoon)) "2026-08-06T17:00:00Z" "future target left as computed"
+
+# Clamp uses the configured offset for 'today', not the machine timezone.
+$nowDubai = [datetimeoffset]::Parse("2026-08-04T12:00:00+04:00")
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $oldBase -Days 3 -Hour 17 -Zone $null -Offset $offDubai -Now $nowDubai)) "2026-08-04T17:00:00+04:00" "clamp rendered in the configured offset"
 
 function Assert-True {
     param([bool]$Actual, [string]$Label)
