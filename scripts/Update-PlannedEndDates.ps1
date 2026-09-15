@@ -36,6 +36,18 @@
 # Usage:
 #   Fill in the CONFIG variables below, then run:
 #   powershell -ExecutionPolicy Bypass -File Update-PlannedEndDates.ps1
+#
+# Scheduled task (unattended):
+#   Set $NonInteractive = $true and point $LogPath at a writable file, then
+#   register:
+#     powershell.exe -NonInteractive -ExecutionPolicy Bypass -File Update-PlannedEndDates.ps1
+#   - No prompt is shown; changes are applied automatically.
+#   - The task exits non-zero when any update fails, so it is visible in
+#     Task Scheduler / monitoring instead of failing silently.
+#   - Runs are serialised by a lock file in the temp directory; a lock older
+#     than 4 hours (crashed run) is taken over.
+#   - The session cookie and CSRF token still expire manually; refresh them
+#     when the task starts reporting failures.
 
 # ---------------------------------------------------------------------------
 # CONFIG - edit these before running
@@ -57,7 +69,9 @@ $Filter = @'
 '@
 
 $PerPage  = 100
-$Confirm  = $true                        # prompt before applying (set $false to auto-apply)
+$Confirm  = $true                        # prompt before applying (interactive runs)
+$NonInteractive = $false                 # $true for scheduled tasks: never prompt, always apply
+$LogPath  = ""                           # e.g. "C:\logs\fsvc-end-dates.log"; "" disables logging
 
 # ---------------------------------------------------------------------------
 # Session / request header helpers (keep the server's rotated cookie in sync)
@@ -283,6 +297,71 @@ function Get-LatestConversation {
     }
 }
 
+# --- scheduled-run hardening -------------------------------------------------
+
+# Decides whether to apply the changes. Non-interactive runs always apply;
+# interactive runs honour $Confirm and the typed answer.
+function Get-ApplyDecision {
+    param([bool]$Confirm, [bool]$NonInteractive, [AllowNull()][string]$Answer)
+    if ($NonInteractive -or -not $Confirm) { return $true }
+    return ($Answer -match "^[yY]")
+}
+
+# Exit code for the run: non-zero when not every planned change was applied, so
+# Task Scheduler reports a failure instead of a silent success.
+function Get-ApplyExitCode {
+    param([int]$Applied, [int]$Total)
+    if ($Applied -ne $Total) { return 1 }
+    return 0
+}
+
+# Acquires an exclusive lock file so overlapping runs cannot double-apply. A
+# lock older than $StaleMinutes (from a crashed run) is taken over. Returns the
+# open file handle, or $null when another run holds the lock.
+function Enter-RunLock {
+    param([string]$Path, [int]$StaleMinutes = 240)
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        try {
+            return [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        } catch {
+            try {
+                $age = (Get-Date) - (Get-Item -LiteralPath $Path -ErrorAction Stop).LastWriteTime
+                if ($age.TotalMinutes -ge $StaleMinutes) {
+                    Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+                    continue
+                }
+            } catch { }
+            return $null
+        }
+    }
+    return $null
+}
+
+function Exit-RunLock {
+    param([AllowNull()]$Handle, [string]$Path)
+    if ($null -ne $Handle) { try { $Handle.Close() } catch { } }
+    try { if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force } } catch { }
+}
+
+# Mirrors all host output to $LogPath (appended) when set.
+$script:TranscriptActive = $false
+function Start-Logging {
+    if (-not $LogPath) { return }
+    try {
+        Start-Transcript -Path $LogPath -Append | Out-Null
+        $script:TranscriptActive = $true
+    } catch {
+        Write-Warning ("Could not start transcript at {0}: {1}" -f $LogPath, $_.Exception.Message)
+    }
+}
+
+function Stop-Logging {
+    if ($script:TranscriptActive) {
+        try { Stop-Transcript | Out-Null } catch { }
+        $script:TranscriptActive = $false
+    }
+}
+
 # Allow dot-sourcing: `path . Update-PlannedEndDates.ps1` defines the helper
 # functions (Add-BusinessDays, Round-Up-QuarterHour, Get-TargetEndDate, ...) without
 # running the script body. Run it directly to actually bump dates.
@@ -306,6 +385,15 @@ if ($SessionCookie -match "PASTE_YOUR") {
     Write-Host "ERROR: fill in \$SessionCookie at the top of the script." -ForegroundColor Red
     exit 1
 }
+
+# One run at a time, and capture output for unattended runs.
+$lockPath = Join-Path ([System.IO.Path]::GetTempPath()) "fsvc-update-planned-end-dates.lock"
+$runLock = Enter-RunLock -Path $lockPath
+if ($null -eq $runLock) {
+    Write-Host ("ERROR: another run is in progress (lock: {0}). If that is stale, delete it and retry." -f $lockPath) -ForegroundColor Red
+    exit 1
+}
+Start-Logging
 
 # ---------------------------------------------------------------------------
 # Collect tickets (paginate until meta.has_next is false)
@@ -366,6 +454,8 @@ foreach ($t in $tickets) {
 
 if ($changes.Count -eq 0) {
     Write-Host "No changes needed."
+    Stop-Logging
+    Exit-RunLock -Handle $runLock -Path $lockPath
     exit 0
 }
 
@@ -373,10 +463,19 @@ foreach ($c in $changes) {
     Write-Host ("[planned_end_date] ticket {0}: {1} -> {2}" -f $c.Id, $c.From, $c.To)
 }
 
-if ($Confirm) {
-    $answer = Read-Host ("Apply {0} changes? [y/N] " -f $changes.Count)
-    if ($answer -notmatch "^[yY]") {
+if ($Confirm -and -not $NonInteractive) {
+    try {
+        $answer = Read-Host ("Apply {0} changes? [y/N] " -f $changes.Count)
+    } catch {
+        Write-Host "ERROR: no console available for confirmation. Set \$NonInteractive = \$true for scheduled runs." -ForegroundColor Red
+        Stop-Logging
+        Exit-RunLock -Handle $runLock -Path $lockPath
+        exit 1
+    }
+    if (-not (Get-ApplyDecision -Confirm $Confirm -NonInteractive $NonInteractive -Answer $answer)) {
         Write-Host "Aborted."
+        Stop-Logging
+        Exit-RunLock -Handle $runLock -Path $lockPath
         exit 0
     }
 }
@@ -397,3 +496,6 @@ foreach ($c in $changes) {
 }
 
 Write-Host ("Done: {0}/{1} applied" -f $applied, $changes.Count)
+Stop-Logging
+Exit-RunLock -Handle $runLock -Path $lockPath
+exit (Get-ApplyExitCode -Applied $applied -Total $changes.Count)

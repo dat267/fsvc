@@ -129,6 +129,50 @@ Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $tueDubai -Days 3 -Hour 17
 $fri = [datetimeoffset]::Parse("2026-08-07T12:07:30+00:00")
 Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $fri -Days 1 -Hour 17 -Zone $null -Offset $offZero)) "2026-08-10T17:00:00Z" "Friday +1 business day lands on Monday"
 
+Write-Host "== Get-ApplyDecision (non-interactive / confirm) ==" -ForegroundColor Cyan
+Assert-Equal (Get-ApplyDecision -Confirm $true -NonInteractive $true -Answer "") $true "non-interactive applies without a prompt"
+Assert-Equal (Get-ApplyDecision -Confirm $true -NonInteractive $true -Answer "n") $true "non-interactive ignores an answer"
+Assert-Equal (Get-ApplyDecision -Confirm $false -NonInteractive $false -Answer "") $true "confirm off applies"
+Assert-Equal (Get-ApplyDecision -Confirm $true -NonInteractive $false -Answer "y") $true "y applies"
+Assert-Equal (Get-ApplyDecision -Confirm $true -NonInteractive $false -Answer "Y") $true "Y applies"
+Assert-Equal (Get-ApplyDecision -Confirm $true -NonInteractive $false -Answer "n") $false "n aborts"
+Assert-Equal (Get-ApplyDecision -Confirm $true -NonInteractive $false -Answer "") $false "empty aborts"
+
+Write-Host "== Get-ApplyExitCode (scheduled-task failure signal) ==" -ForegroundColor Cyan
+Assert-Equal (Get-ApplyExitCode -Applied 3 -Total 3) 0 "full success exits 0"
+Assert-Equal (Get-ApplyExitCode -Applied 2 -Total 3) 1 "partial failure exits 1"
+Assert-Equal (Get-ApplyExitCode -Applied 0 -Total 0) 0 "no changes exits 0"
+Assert-Equal (Get-ApplyExitCode -Applied 0 -Total 5) 1 "total failure exits 1"
+
+Write-Host "== Run lock (prevents overlapping scheduled runs) ==" -ForegroundColor Cyan
+$lockPath = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-lock-test-" + [guid]::NewGuid().ToString())
+$h1 = Enter-RunLock -Path $lockPath
+Assert-True ($null -ne $h1) "first acquire succeeds"
+$h2 = Enter-RunLock -Path $lockPath
+Assert-True ($null -eq $h2) "second acquire blocked while held"
+Exit-RunLock -Handle $h1 -Path $lockPath
+$h3 = Enter-RunLock -Path $lockPath
+Assert-True ($null -ne $h3) "acquire after release succeeds"
+Exit-RunLock -Handle $h3 -Path $lockPath
+[System.IO.File]::WriteAllText($lockPath, "stale")
+(Get-Item -LiteralPath $lockPath).LastWriteTime = (Get-Date).AddHours(-5)
+$h4 = Enter-RunLock -Path $lockPath -StaleMinutes 60
+Assert-True ($null -ne $h4) "stale lock taken over"
+Exit-RunLock -Handle $h4 -Path $lockPath
+Assert-True (-not (Test-Path -LiteralPath $lockPath)) "lock file removed on release"
+
+Write-Host "== Logging (transcript for scheduled runs) ==" -ForegroundColor Cyan
+$logPath = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-log-test-" + [guid]::NewGuid().ToString() + ".log")
+$oldLogPath = $LogPath
+$LogPath = $logPath
+Start-Logging
+Write-Host "log-marker-42"
+Stop-Logging
+Assert-True (Test-Path -LiteralPath $logPath) "log file created"
+Assert-True ((Get-Content -LiteralPath $logPath -Raw) -match "log-marker-42") "host output captured"
+Remove-Item -LiteralPath $logPath -Force
+$LogPath = $oldLogPath
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red
