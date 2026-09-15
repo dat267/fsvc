@@ -9,6 +9,11 @@
 # Freshservice or need any cookie; it only copies files and writes a managed
 # block into your profile.
 #
+# It works from a clone (copies the local scripts/) or remotely: when run
+# without a local scripts folder (e.g. piped from the web), it downloads the
+# scripts instead. In remote/iex mode it never calls exit, so it will not close
+# your shell.
+#
 # Usage:
 #   # install to ~/fsvc and record shared config for future shells
 #   pwsh scripts/Install-FSvc.ps1 -AddToPath `
@@ -20,6 +25,12 @@
 #   # remove the installed folder and the profile block
 #   pwsh scripts/Install-FSvc.ps1 -Uninstall
 #
+#   # remote one-liner (no clone needed); use FSVC_* env vars for config
+#   irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install-FSvc.ps1 | iex
+#
+#   # remote with parameters
+#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install-FSvc.ps1))) -AddToPath -Subdomain acme
+#
 # The managed block in your profile is delimited by markers and is replaced on
 # every install, so it never duplicates. Use -ProfilePath to target a different
 # profile (handy for testing).
@@ -30,6 +41,8 @@ param(
     [switch]$AddToPath,
     [switch]$Uninstall,
     [switch]$Force,
+    [switch]$Remote,
+    [string]$RemoteBaseUrl = "https://raw.githubusercontent.com/dat267/fsvc/main/scripts",
     # Optional shared configuration written to the profile and current session:
     [string]$Subdomain,
     [string]$Session,
@@ -137,9 +150,61 @@ function Get-FSvcInstallFiles {
     return @(Get-ChildItem -LiteralPath $SourceDir -Filter "*.ps1" -File | ForEach-Object { $_.FullName })
 }
 
+# The install set for remote mode, where there is no directory to enumerate.
+# Kept in sync with scripts/ by Install-FSvc.Tests.ps1.
+$script:FSvcScriptNames = @(
+    "Fill-PlannedStartDates.ps1",
+    "Fill-PlannedStartDates.Tests.ps1",
+    "Get-TicketContent.ps1",
+    "Get-TicketContent.Tests.ps1",
+    "Get-TicketList.ps1",
+    "Get-TicketList.Tests.ps1",
+    "Get-TicketOverview.ps1",
+    "Get-TicketOverview.Tests.ps1",
+    "Install-FSvc.ps1",
+    "Install-FSvc.Tests.ps1",
+    "Update-PlannedEndDates.ps1",
+    "Update-PlannedEndDates.Tests.ps1"
+)
+
+# Builds name -> URL pairs for a remote install.
+function Get-FSvcDownloadPlan {
+    param([string]$RemoteBaseUrl, [string[]]$Names)
+    $plan = @()
+    $base = $RemoteBaseUrl.TrimEnd('/')
+    foreach ($n in $Names) {
+        $plan += [pscustomobject]@{ Name = $n; Url = ($base + "/" + $n) }
+    }
+    return $plan
+}
+
+# Downloads the install set into $Destination. PS 5.1 needs TLS 1.2 and
+# -UseBasicParsing for raw GitHub content.
+function Install-FSvcFromRemote {
+    param([string]$RemoteBaseUrl, [string[]]$Names, [string]$Destination, [switch]$Force)
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+    $plan = Get-FSvcDownloadPlan -RemoteBaseUrl $RemoteBaseUrl -Names $Names
+    $copied = 0
+    $skipped = 0
+    foreach ($item in $plan) {
+        $target = Join-Path $Destination $item.Name
+        if ((Test-Path -LiteralPath $target) -and -not $Force) {
+            $skipped++
+            continue
+        }
+        Invoke-WebRequest -Uri $item.Url -OutFile $target -UseBasicParsing
+        $copied++
+    }
+    return [pscustomobject]@{ Copied = $copied; Skipped = $skipped }
+}
+
 # Allow dot-sourcing: `path . Install-FSvc.ps1` defines the helper functions
 # without performing an install.
 if ($MyInvocation.InvocationName -eq '.') { return }
+
+# When piped through iex / a scriptblock there is no script path; calling exit
+# would close the caller's shell, so terminate with return instead.
+$inMemory = [string]::IsNullOrEmpty($PSScriptRoot)
 
 # --- uninstall ---------------------------------------------------------------
 
@@ -152,34 +217,40 @@ if ($Uninstall) {
     }
     Update-FSvcProfile -ProfilePath $ProfilePath -Block ""
     Write-Host ("Removed the fsvc block from {0}" -f $ProfilePath)
-    exit 0
+    if ($inMemory) { return } else { exit 0 }
 }
 
 # --- install -----------------------------------------------------------------
 
-$sourceDir = $PSScriptRoot
-$files = Get-FSvcInstallFiles -SourceDir $sourceDir
-if (-not $files -or $files.Count -eq 0) {
-    Write-Host ("ERROR: no .ps1 files found next to the installer ({0})." -f $sourceDir) -ForegroundColor Red
-    exit 1
+$localFiles = @(Get-FSvcInstallFiles -SourceDir $PSScriptRoot)
+$useRemote = [bool]($Remote -or $localFiles.Count -eq 0)
+
+if ($useRemote -and $script:FSvcScriptNames.Count -eq 0) {
+    Write-Host "ERROR: the remote script list is empty." -ForegroundColor Red
+    if ($inMemory) { return } else { exit 1 }
 }
 
 if (-not (Test-Path -LiteralPath $Destination)) {
     New-Item -ItemType Directory -Path $Destination -Force | Out-Null
 }
 
-$copied = 0
-$skipped = 0
-foreach ($f in $files) {
-    $target = Join-Path $Destination (Split-Path -Leaf $f)
-    if ((Test-Path -LiteralPath $target) -and -not $Force) {
-        $skipped++
-        continue
+if ($useRemote) {
+    $result = Install-FSvcFromRemote -RemoteBaseUrl $RemoteBaseUrl -Names $script:FSvcScriptNames -Destination $Destination -Force:$Force
+    Write-Host ("Installed scripts from {0} to {1} ({2} downloaded, {3} already present)" -f $RemoteBaseUrl, $Destination, $result.Copied, $result.Skipped)
+} else {
+    $copied = 0
+    $skipped = 0
+    foreach ($f in $localFiles) {
+        $target = Join-Path $Destination (Split-Path -Leaf $f)
+        if ((Test-Path -LiteralPath $target) -and -not $Force) {
+            $skipped++
+            continue
+        }
+        Copy-Item -LiteralPath $f -Destination $target -Force
+        $copied++
     }
-    Copy-Item -LiteralPath $f -Destination $target -Force
-    $copied++
+    Write-Host ("Installed scripts to {0} ({1} copied, {2} already present)" -f $Destination, $copied, $skipped)
 }
-Write-Host ("Installed scripts to {0} ({1} copied, {2} already present)" -f $Destination, $copied, $skipped)
 
 $envMap = Get-FSvcEnvAssignments -Subdomain $Subdomain -Session $Session -CsrfToken $CsrfToken -LogPath $LogPath -TimeZoneId $TimeZoneId -UtcOffset $UtcOffset
 $pathEntry = ""

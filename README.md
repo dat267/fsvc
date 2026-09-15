@@ -38,6 +38,23 @@ pwsh scripts/Install-FSvc.ps1 -Uninstall
 - The profile block is delimited by markers and replaced on every run, so it
   never duplicates and your other profile content is untouched.
 
+### Remote one-liner (no clone needed)
+
+When there is no local `scripts/` folder the installer downloads the scripts
+from the repo. In this mode it never calls `exit`, so it will not close your
+shell.
+
+```powershell
+# install with defaults (config comes from any FSVC_* env vars already set)
+irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install-FSvc.ps1 | iex
+
+# remote install with parameters (scriptblock form)
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install-FSvc.ps1))) -AddToPath -Subdomain acme
+```
+
+`-Remote` forces the download path even from a clone; `-RemoteBaseUrl` overrides
+the source (e.g. a branch, an internal mirror, or a local test server).
+
 ## Quick start
 
 Configure once per session with environment variables, or edit the CONFIG block

@@ -104,6 +104,19 @@ Assert-Equal $files.Count 2 "only .ps1 files are installed"
 Assert-True (($files | Where-Object { $_ -like "*A.ps1" }).Count -eq 1) "A.ps1 included"
 Remove-Item -LiteralPath $srcDir -Recurse -Force
 
+Write-Host "== Get-FSvcDownloadPlan ==" -ForegroundColor Cyan
+$plan = Get-FSvcDownloadPlan -RemoteBaseUrl "https://example.com/scripts/" -Names @("A.ps1", "B.ps1")
+Assert-Equal $plan.Count 2 "one entry per script"
+Assert-Equal $plan[0].Url "https://example.com/scripts/A.ps1" "trailing slash normalised"
+Assert-Equal $plan[1].Name "B.ps1" "name preserved"
+
+Write-Host "== Remote manifest matches the scripts folder =" -ForegroundColor Cyan
+# The remote install path has no directory to enumerate, so the script list is
+# embedded. This guards it against drift when a script is added.
+$actual = @(Get-ChildItem -LiteralPath $here -Filter "*.ps1" -File | ForEach-Object { $_.Name } | Sort-Object)
+$declared = @($script:FSvcScriptNames | Sort-Object)
+Assert-Equal ($declared -join ",") ($actual -join ",") "FSvcScriptNames matches scripts/*.ps1"
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red
