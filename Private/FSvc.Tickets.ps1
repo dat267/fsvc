@@ -136,13 +136,14 @@ function Get-FSvcPlannedEndDate {
         [datetimeoffset]$Now,
         [int]$BusinessDays = 3,
         [int]$TargetHour = 17,
-        [AllowNull()][string]$TimeZone
+        [AllowNull()]$Zone,
+        [AllowNull()]$Offset
     )
     $base = ConvertTo-FSDateTimeOffset $LatestConversationAt
     if ($null -eq $base) { $base = ConvertTo-FSDateTimeOffset $Ticket.created_at }
     if ($null -eq $base) { return $null }
 
-    $target = Get-FSvcTargetEndDate -Base $base -Days $BusinessDays -Hour $TargetHour -TimeZone $TimeZone -Now $Now
+    $target = Get-FSvcTargetEndDate -Base $base -Days $BusinessDays -Hour $TargetHour -Zone $Zone -Offset $Offset -Now $Now
     if (-not (Test-FSvcEndDateNeedsUpdate -PlannedEndDate $Ticket.planned_end_date -Target $target)) { return $null }
     return $target
 }

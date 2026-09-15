@@ -73,27 +73,28 @@ function Get-FSvcBusinessDaysBetween {
     return $full - $fracFrom + $fracTo
 }
 
-# True when a TimeZone setting looks like a UTC offset ("+04:00", "+0400", "Z")
-# rather than a zone id.
-function Test-FSvcUtcOffsetValue {
-    param([AllowNull()][string]$Value)
-    if (-not $Value) { return $false }
-    return ($Value -match '^[+-]\d{2}:?\d{2}$') -or ($Value -match '^(?i)Z$')
+# Resolves a Windows or IANA timezone id to a TimeZoneInfo. $null when empty.
+function Resolve-FSvcTimeZone {
+    param([string]$Id)
+    if (-not $Id) { return $null }
+    try { return [System.TimeZoneInfo]::FindSystemTimeZoneById($Id) }
+    catch { throw ("Unknown TimeZoneId '{0}'. Use a Windows id (e.g. 'Arabian Standard Time') or IANA id (e.g. 'Asia/Dubai')." -f $Id) }
 }
 
-# Converts an instant to the configured time zone. $TimeZone accepts either a
-# fixed UTC offset ("+04:00", "Z") or a Windows/IANA zone id ("Arabian Standard
-# Time" / "Asia/Dubai"); empty leaves the instant in its own offset.
+# Parses a "+04:00" style UTC offset. $null when empty.
+function ConvertTo-FSvcUtcOffset {
+    param([string]$Value)
+    if (-not $Value) { return $null }
+    try { return [datetimeoffset]::Parse("2000-01-01T00:00:00" + $Value).Offset }
+    catch { throw ("Invalid UtcOffset '{0}'. Use a value like '+04:00'." -f $Value) }
+}
+
+# Converts an instant to the target timezone (by id) or fixed UTC offset.
 function ConvertTo-FSvcTargetZone {
-    param([datetimeoffset]$Value, [AllowNull()][string]$TimeZone)
-    if (-not $TimeZone) { return $Value }
-    if (Test-FSvcUtcOffsetValue -Value $TimeZone) {
-        if ($TimeZone -match '^(?i)Z$') { return $Value.ToOffset([timespan]::Zero) }
-        return $Value.ToOffset([datetimeoffset]::Parse("2000-01-01T00:00:00" + $TimeZone).Offset)
-    }
-    try { $zone = [System.TimeZoneInfo]::FindSystemTimeZoneById($TimeZone) }
-    catch { throw ("Invalid TimeZone '{0}'. Use an offset like '+04:00' or a zone id like 'Arabian Standard Time' / 'Asia/Dubai'." -f $TimeZone) }
-    return [System.TimeZoneInfo]::ConvertTime($Value, $zone)
+    param([datetimeoffset]$Value, [AllowNull()]$Zone, [AllowNull()]$Offset)
+    if ($null -ne $Zone) { return [System.TimeZoneInfo]::ConvertTime($Value, $Zone) }
+    if ($null -ne $Offset) { return $Value.ToOffset([timespan]$Offset) }
+    return $Value
 }
 
 # Computes a planned_end_date from a base instant: convert to the target
@@ -104,16 +105,17 @@ function Get-FSvcTargetEndDate {
         [datetimeoffset]$Base,
         [int]$Days,
         [int]$Hour,
-        [AllowNull()][string]$TimeZone,
+        [AllowNull()]$Zone,
+        [AllowNull()]$Offset,
         [AllowNull()]$Now
     )
-    $b = ConvertTo-FSvcTargetZone -Value $Base -TimeZone $TimeZone
+    $b = ConvertTo-FSvcTargetZone -Value $Base -Zone $Zone -Offset $Offset
     $t = Add-FSvcBusinessDays -Start $b -Days $Days
     $t = [datetimeoffset]::new($t.Year, $t.Month, $t.Day, $Hour, 0, 0, $t.Offset)
     $t = Round-FSvcQuarterHour $t
 
     if ($null -ne $Now) {
-        $n = ConvertTo-FSvcTargetZone -Value $Now -TimeZone $TimeZone
+        $n = ConvertTo-FSvcTargetZone -Value $Now -Zone $Zone -Offset $Offset
         if ($t -le $n) {
             $slot = [datetimeoffset]::new($n.Year, $n.Month, $n.Day, $Hour, 0, 0, $n.Offset)
             if ($slot -le $n) { $slot = Add-FSvcBusinessDays -Start $slot -Days 1 }

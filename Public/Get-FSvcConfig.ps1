@@ -11,7 +11,8 @@ function Get-FSvcConfig {
         BaseUrl       = $cfg.BaseUrl
         SessionCookie = if ($cfg.SessionCookie) { '<set>' } else { $null }
         CsrfToken     = if ($cfg.CsrfToken) { '<set>' } else { $null }
-        TimeZone      = $cfg.TimeZone
+        TimeZoneId    = $cfg.TimeZoneId
+        UtcOffset     = $cfg.UtcOffset
         LogPath       = $cfg.LogPath
     }
 }

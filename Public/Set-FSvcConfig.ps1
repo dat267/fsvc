@@ -20,7 +20,8 @@ function Set-FSvcConfig {
         [string]$SessionCookie,
         [string]$CsrfToken,
         [string]$BaseUrl,
-        [string]$TimeZone,
+        [string]$TimeZoneId,
+        [string]$UtcOffset,
         [string]$LogPath,
         [string]$ConfigPath
     )

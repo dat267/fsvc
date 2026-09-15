@@ -114,7 +114,7 @@ Assert-Equal $list[1].id 2 "second page returned"
 $script:FSvcTransport = $null
 
 Write-Host "== Update-FSvcPlannedEndDates policy via command ==" -ForegroundColor Cyan
-$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't'; TimeZone = '+04:00' }
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't'; UtcOffset = '+04:00' }
 New-StubTransport -Handler {
     param($Request)
     if ($Request.Method -eq 'PUT') { return '{"ticket":{}}' }
