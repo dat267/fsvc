@@ -8,22 +8,12 @@ function Get-FSvcTickets {
         [int]$MaxPages = 1000,
         [hashtable]$Config
     )
-    $tickets = @()
-    $page = 1
-    do {
-        $query = @{
-            "order_by"   = "created_at"
-            "order_type" = "asc"
-            "per_page"   = $PerPage
-            "query_hash" = $QueryHash
-            "page"       = $page
-        }
-        $data = (Invoke-FSvcGet -Path "tickets" -Query $query -Config $Config) | ConvertFrom-FSvcJson
-        $tickets += @($data.tickets)
-        $hasNext = $data.meta.has_next
-        $page++
-    } while ($hasNext -and $page -lt $MaxPages)
-    return $tickets
+    return Invoke-FSvcPagedQuery -Path "tickets" -ArrayKey "tickets" -MaxPages $MaxPages -Config $Config -BaseQuery @{
+        "order_by"   = "created_at"
+        "order_type" = "asc"
+        "per_page"   = $PerPage
+        "query_hash" = $QueryHash
+    }
 }
 
 # Most recent conversation for a ticket - any kind, private note or public

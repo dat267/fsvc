@@ -20,20 +20,13 @@ function Get-FSvcTicketList {
         [int]$PerPage = 100,
         [int]$MaxPages = 1000
     )
-    $tickets = @()
-    do {
-        $query = @{
-            order_by   = $OrderBy
-            order_type = $OrderType
-            per_page   = $PerPage
-            page       = $Page
-        }
-        if ($FilterId) { $query['filter'] = $FilterId }
-        if ($QueryHash) { $query['query_hash'] = $QueryHash }
-        $data = (Invoke-FSvcGet -Path "tickets" -Query $query) | ConvertFrom-FSvcJson
-        $tickets += @($data.tickets)
-        $hasNext = $data.meta.has_next
-        $Page++
-    } while ($hasNext -and $Page -lt $MaxPages)
-    return $tickets
+    $baseQuery = @{
+        order_by   = $OrderBy
+        order_type = $OrderType
+        per_page   = $PerPage
+    }
+    if ($FilterId) { $baseQuery['filter'] = $FilterId }
+    if ($QueryHash) { $baseQuery['query_hash'] = $QueryHash }
+
+    return Invoke-FSvcPagedQuery -Path "tickets" -ArrayKey "tickets" -BaseQuery $baseQuery -StartPage $Page -MaxPages $MaxPages
 }

@@ -68,6 +68,24 @@ Assert-Equal $script:applied 1 "apply called when approved"
 Assert-Equal $done[0].Applied $true "approved change marked applied"
 Assert-True (-not (Test-Path -LiteralPath (Join-Path ([System.IO.Path]::GetTempPath()) ($lockName + '.lock')))) "lock released after run"
 
+Write-Host "== Invoke-FSvcPagedQuery ==" -ForegroundColor Cyan
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
+New-StubTransport -Handler {
+    param($Request)
+    if ($Request.Query.page -eq 1) { '{"tickets":[{"id":1}],"meta":{"has_next":true}}' }
+    else { '{"tickets":[{"id":2}],"meta":{"has_next":false}}' }
+}
+$all = @(Invoke-FSvcPagedQuery -Path 'tickets' -ArrayKey 'tickets' -BaseQuery @{ per_page = 1 } -Config $script:FSvcConfig)
+Assert-Equal $all.Count 2 "walks both pages"
+Assert-Equal $all[1].id 2 "second page item returned"
+Assert-Equal @($script:StubCalls).Count 2 "two requests"
+Assert-Equal $script:StubCalls[0].Query.page 1 "first request is page 1"
+Assert-Equal $script:StubCalls[1].Query.page 2 "second request is page 2"
+
+New-StubTransport -Handler { param($Request) '{"tickets":[{"id":9}],"meta":{"has_next":true}}' }
+$capped = @(Invoke-FSvcPagedQuery -Path 'tickets' -ArrayKey 'tickets' -BaseQuery @{} -MaxPages 2 -Config $script:FSvcConfig)
+Assert-Equal @($script:StubCalls).Count 2 "stops at MaxPages"
+
 Write-Host "== Set-FSvcPlannedStartDates honours ShouldProcess ==" -ForegroundColor Cyan
 $script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
 $ticketJson = '{"tickets":[{"id":10,"subject":"T","planned_start_date":null,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}'
@@ -82,6 +100,17 @@ $applied = Set-FSvcPlannedStartDates -Confirm:$false
 Assert-Equal @($applied)[0].Applied $true "-Confirm:$false applies"
 Assert-Equal @($script:StubCalls | Where-Object { $_.Method -eq 'PUT' }).Count 1 "one PUT issued"
 Assert-Equal $script:StubCalls[1].Body.planned_start_date '2026-09-01T10:00:00+04:00' "PUT carries the rounded date"
+$script:FSvcTransport = $null
+
+Write-Host "== Get-FSvcTicketList paging ==" -ForegroundColor Cyan
+New-StubTransport -Handler {
+    param($Request)
+    if ($Request.Query.page -eq 1) { '{"tickets":[{"id":1}],"meta":{"has_next":true}}' }
+    else { '{"tickets":[{"id":2}],"meta":{"has_next":false}}' }
+}
+$list = @(Get-FSvcTicketList -QueryHash 'x' -PerPage 1)
+Assert-Equal $list.Count 2 "command walks pages"
+Assert-Equal $list[1].id 2 "second page returned"
 $script:FSvcTransport = $null
 
 Write-Host ""

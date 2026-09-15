@@ -83,3 +83,37 @@ function Invoke-FSvcPut {
     param([string]$Path, [hashtable]$Body, [hashtable]$Config)
     return Invoke-FSvcRequest -Method PUT -Path $Path -Body $Body -Config $Config
 }
+
+# Walks every page of a list endpoint and returns the items from $ArrayKey.
+# $BaseQuery is copied per page (page is added), and $Fetch defaults to
+# Invoke-FSvcGet so tests can stub the whole traversal.
+function Invoke-FSvcPagedQuery {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [hashtable]$BaseQuery,
+        [Parameter(Mandatory)][string]$ArrayKey,
+        [int]$StartPage = 1,
+        [int]$MaxPages = 1000,
+        [hashtable]$Config,
+        [scriptblock]$Fetch
+    )
+    if (-not $BaseQuery) { $BaseQuery = @{} }
+    if (-not $Fetch) {
+        $Fetch = { param($P, $Q, $C) Invoke-FSvcGet -Path $P -Query $Q -Config $C }
+    }
+
+    $items = @()
+    $page = $StartPage
+    $fetched = 0
+    do {
+        $query = @{}
+        foreach ($k in $BaseQuery.Keys) { $query[$k] = $BaseQuery[$k] }
+        $query['page'] = $page
+        $data = (& $Fetch $Path $query $Config) | ConvertFrom-FSvcJson
+        $items += @($data.$ArrayKey)
+        $hasNext = $data.meta.has_next
+        $page++
+        $fetched++
+    } while ($hasNext -and $fetched -lt $MaxPages)
+    return $items
+}
