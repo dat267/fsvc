@@ -1,0 +1,27 @@
+name: scripts
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run standalone script tests
+        shell: pwsh
+        run: |
+          $fail = 0
+          foreach ($t in Get-ChildItem scripts/*.Tests.ps1) {
+            Write-Host "== $($t.Name) =="
+            pwsh -NonInteractive -File $t.FullName
+            if ($LASTEXITCODE -ne 0) { $fail = 1 }
+          }
+          if ($fail -ne 0) { exit 1 }
+          Write-Host "All script suites passed."

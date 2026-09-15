@@ -20,7 +20,7 @@ Referer header):
 - `type` — `default`
 - `workspace_id` is NOT required in `query_hash` (the unresolved view omits it)
 
-`tickets classify` makes two targeted queries — **unassigned** unresolved
+`Get-TicketOverview.ps1` makes two targeted queries — **unassigned** unresolved
 tickets (`responder_id = -1`) and **self-assigned** unresolved tickets
 (`responder_id = 0`) — instead of paginating every unresolved ticket. The
 unassigned list is served directly by the query:
@@ -44,8 +44,7 @@ The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
 - `status = 4` — Resolved (HAR: `status_name` pairing)
 - `status = 5` — Closed (HAR: `status_name` pairing)
 - Status 1 was never observed in any HAR capture; higher/custom values are
-  instance-specific. The CLI maps unknown values back to the raw number.
-  Canonical mapping: `statusName` in `cmd/show.go`.
+  instance-specific. Scripts fall back to the raw number for unknown values.
 
 ### responder_id values (user-confirmed)
 
@@ -56,7 +55,7 @@ The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
 
 ## Unassigned detection
 
-`tickets classify` treats a ticket as unassigned when the response
+The overview script treats a ticket as unassigned when the response
 `responder_id` is `null` or `-1`.
 
 ## Endpoints
@@ -72,11 +71,10 @@ The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
 ## Auth
 
 - Session cookies (`helpdesk_node_session`, `_itildesk_session`); the server
-  rotates `_itildesk_session` via `Set-Cookie` on responses. The CLI adopts
-  the rotated value after every request (`Client.captureSession` in
-  `cmd/client.go`), so each request sends exactly one current credential.
-  The standalone PowerShell scripts use the single configured token and do
-  not track rotation.
+  rotates `_itildesk_session` via `Set-Cookie` on responses. The Go CLI (on
+  the `archive/go-cli` branch) adopted the rotated value after every request;
+  the standalone scripts use the single configured token and do not track
+  rotation.
 - Writes additionally require `X-CSRF-Token`.
 - Response header confirms the private API:
   `x-freshservice-api-version: latest=v2; requested=private`.
@@ -91,6 +89,6 @@ The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
 ## Resolved
 
 - Conversations are returned **latest first** by default (user-confirmed). The
-  `tickets classify` command explicitly requests
-  `order_by=created_at&order_type=desc&per_page=1` and reads the first item as
+  scripts explicitly request
+  `order_by=created_at&order_type=desc&per_page=1` and read the first item as
   the latest message.
