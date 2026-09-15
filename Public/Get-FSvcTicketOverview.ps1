@@ -6,7 +6,10 @@ function Get-FSvcTicketOverview {
         Returns one object per ticket with a Category property, so pipe it to
         Where-Object / Group-Object / Format-Table. Rows are grouped in report
         order (unassigned, waiting, awaiting_agent) and, within each group,
-        ordered by Days descending (longest-waiting first).
+        ordered by Days descending (longest-waiting first). Each row exposes the
+        numeric business-day count (Days) plus a humanized InGroup ("13d 14h")
+        and the Since timestamp the count is measured from (created_at for
+        unassigned rows, the last message otherwise).
     .EXAMPLE
         Get-FSvcTicketOverview -OlderThanDays 2 | Format-Table Category, Id, Subject, Days
     #>
@@ -30,13 +33,16 @@ function Get-FSvcTicketOverview {
         $created = ConvertTo-FSDateTimeOffset $t.created_at
         $days = 0.0
         if ($null -ne $created) { $days = Get-FSvcBusinessDaysBetween -From $created -To $now }
+        $days = [math]::Round($days, 1)
         $out += [pscustomobject]@{
             PSTypeName = 'FSvc.TicketOverviewRow'
             Category   = 'unassigned'
-            Id       = $t.id
-            Subject  = $t.subject
-            Days     = [math]::Round($days, 1)
-            Link     = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
+            Id         = $t.id
+            Subject    = $t.subject
+            Days       = $days
+            InGroup    = Format-FSvcDuration -Days $days
+            Since      = $created
+            Link       = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
         }
     }
 
@@ -56,13 +62,16 @@ function Get-FSvcTicketOverview {
         if ($null -ne $lastMessage) { $ref = $lastMessage }
         $days = 0.0
         if ($null -ne $ref) { $days = Get-FSvcBusinessDaysBetween -From $ref -To $now }
+        $days = [math]::Round($days, 1)
         $out += [pscustomobject]@{
             PSTypeName = 'FSvc.TicketOverviewRow'
             Category   = $category
-            Id       = $t.id
-            Subject  = $t.subject
-            Days     = [math]::Round($days, 1)
-            Link     = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
+            Id         = $t.id
+            Subject    = $t.subject
+            Days       = $days
+            InGroup    = Format-FSvcDuration -Days $days
+            Since      = $ref
+            Link       = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
         }
     }
     return (Sort-FSvcOverviewRows -Rows $out)

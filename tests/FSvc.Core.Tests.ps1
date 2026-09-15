@@ -200,6 +200,15 @@ $ordered = @(Sort-FSvcOverviewRows -Rows $rows)
 Assert-Equal (($ordered | ForEach-Object { $_.Id }) -join ',') '4,2,3,5,1' "groups in report order, Days descending within each"
 Assert-Equal (($rows | ForEach-Object { $_.Id }) -join ',') '1,2,3,4,5' "sorter does not mutate the input"
 
+Write-Host "== Humanized duration ==" -ForegroundColor Cyan
+Assert-Equal (Format-FSvcDuration -Days 302.1) '302d 2h' "days + hours"
+Assert-Equal (Format-FSvcDuration -Days 13.6) '13d 14h' "fraction becomes hours"
+Assert-Equal (Format-FSvcDuration -Days 5.5) '5d 12h' "half day"
+Assert-Equal (Format-FSvcDuration -Days 0.5) '12h' "sub-day"
+Assert-Equal (Format-FSvcDuration -Days 0) '0h' "zero"
+Assert-Equal (Format-FSvcDuration -Days 2.99) '3d' "rounding carries into whole days"
+Assert-Equal (Format-FSvcDuration -Days -1) '0h' "negative clamps to zero"
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

@@ -10,7 +10,7 @@ Import-Module fsvc
 
 Set-FSvcConfig -Subdomain acme -ItildeskSession '<cookie>' -CsrfToken '<token>'
 
-Get-FSvcTicketOverview | Format-Table Category, Id, Subject, Days
+Get-FSvcTicketOverview                              # Category / Subject / InGroup / Since / Link
 Get-FSvcTicketContent -Id 10100 | Format-FSvcTicketContent
 Update-FSvcPlannedEndDates -WhatIf
 ```
@@ -116,6 +116,13 @@ Examples:
 Get-FSvcTicketList -FilterId 1100 | Format-Table id, subject, status, priority
 Get-FSvcTicketContent -Id 10100 | ConvertTo-Json -Depth 10
 Get-FSvcTicketOverview -OlderThanDays 2 | Where-Object Category -eq 'waiting'
+```
+`Get-FSvcTicketOverview` rows are grouped `unassigned`, `waiting`, `awaiting_agent`
+and sorted by `Days` descending within each group. `Days` is a numeric business-day
+count (weekends skipped, holidays not modelled) measured from `Since` -- `created_at`
+for unassigned rows, the last message otherwise; `InGroup` is the same value
+humanized (`13d 14h`). `Id` stays a property even though the default view omits it.
+```powershell
 Set-FSvcPlannedStartDates -WhatIf
 Update-FSvcPlannedEndDates -BusinessDays 3 -TargetHour 17 -UtcOffset '+04:00'
 ```

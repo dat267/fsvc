@@ -156,3 +156,18 @@ function Sort-FSvcOverviewRows {
     $rank = @{ 'unassigned' = 0; 'waiting' = 1; 'awaiting_agent' = 2 }
     return @($Rows | Sort-Object -Property @{ Expression = { if ($rank.ContainsKey($_.Category)) { $rank[$_.Category] } else { 99 } } }, @{ Expression = { [double]$_.Days }; Descending = $true })
 }
+
+# Humanizes a business-day count as a compact "Nd Nh" string (hours come from
+# the fractional day). Used for display; the numeric Days value is kept for
+# sorting and scripting.
+function Format-FSvcDuration {
+    param([double]$Days)
+    if ($Days -lt 0) { $Days = 0 }
+    $rounded = [math]::Round($Days, 1, [System.MidpointRounding]::AwayFromZero)
+    $whole = [int][math]::Floor($rounded)
+    $hours = [int][math]::Round(($rounded - $whole) * 24, 0, [System.MidpointRounding]::AwayFromZero)
+    if ($hours -ge 24) { $whole += 1; $hours -= 24 }
+    if ($whole -gt 0 -and $hours -gt 0) { return ('{0}d {1}h' -f $whole, $hours) }
+    if ($whole -gt 0) { return ('{0}d' -f $whole) }
+    return ('{0}h' -f $hours)
+}
