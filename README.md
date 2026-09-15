@@ -21,39 +21,30 @@ accumulated knowledge.
 
 ## Install
 
-The installer copies every script to a stable folder (default `~/fsvc`),
-optionally adds it to `PATH`, and can store shared configuration in your
-PowerShell profile so all scripts pick it up:
+Installs to `~/fsvc` (Windows: `%USERPROFILE%\fsvc`) — no clone, no
+parameters:
 
 ```powershell
-pwsh scripts/Install-FSvc.ps1 -AddToPath `
-     -Subdomain acme -Session "<cookie>" -CsrfToken "<token>" -LogPath "C:\logs\fsvc.log"
-
-# later: remove the folder and the profile block
-pwsh scripts/Install-FSvc.ps1 -Uninstall
+irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install.ps1 | iex
 ```
 
-- `-Destination` chooses the folder (default `~/fsvc`); `-Force` overwrites.
-- `-ProfilePath` targets a specific profile (useful for testing).
-- The profile block is delimited by markers and replaced on every run, so it
-  never duplicates and your other profile content is untouched.
+Shared configuration comes from the `FSVC_*` environment variables below. From a
+clone, run `pwsh scripts/Install.ps1` instead — it does the same.
 
-### Remote one-liner (no clone needed)
-
-When there is no local `scripts/` folder the installer downloads the scripts
-from the repo. In this mode it never calls `exit`, so it will not close your
-shell.
+Optional, only if you want them:
 
 ```powershell
-# install with defaults (config comes from any FSVC_* env vars already set)
-irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install-FSvc.ps1 | iex
-
-# remote install with parameters (scriptblock form)
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install-FSvc.ps1))) -AddToPath -Subdomain acme
+pwsh scripts/Install.ps1 -AddToPath -Subdomain acme   # prepend PATH, save shared config
+pwsh scripts/Install.ps1 -Force                       # refresh an existing install
+pwsh scripts/Install.ps1 -Uninstall                   # remove the folder and config block
 ```
 
-`-Remote` forces the download path even from a clone; `-RemoteBaseUrl` overrides
-the source (e.g. a branch, an internal mirror, or a local test server).
+- `-AddToPath` and the config parameters write a managed block to your
+  PowerShell profile (delimited by markers, replaced on each run, never
+  duplicated). Without them, nothing touches your profile.
+- If there is no local `scripts/` folder the installer downloads from the repo;
+  `-RemoteBaseUrl` overrides the source (branch, mirror, test server). In that
+  mode it never calls `exit`, so it will not close your shell.
 
 ## Quick start
 
@@ -87,7 +78,7 @@ before applying (unless auto-confirmed).
 
 | Script | Purpose | Key knobs |
 | --- | --- | --- |
-| `Install-FSvc.ps1` | Install/copy the scripts, optionally add to `PATH` and persist shared config; `-Uninstall` removes both | `-Destination`, `-AddToPath`, `-Force`, `-Uninstall`, `-ProfilePath` |
+| `Install.ps1` | Install/copy the scripts, optionally add to `PATH` and persist shared config; `-Uninstall` removes both | `-Destination`, `-AddToPath`, `-Force`, `-Uninstall`, `-ProfilePath` |
 | `Get-TicketList.ps1` | List tickets by saved-filter ID or raw `query_hash`, rendered as a table | `$FilterId` / `$QueryHash` (exactly one), `$Properties`, `$PerPage` |
 | `Get-TicketContent.ps1` | Show one ticket and its full conversation trace; `-AsObject` emits `{ Ticket, Conversations }` for piping | `-Id`, `-AsObject` |
 | `Get-TicketOverview.ps1` | Three-list triage: unassigned (customizable conditions), waiting on customer > N business days, awaiting agent | `$UnassignedQueryHash`, `$AssignedQueryHash`, `$OlderThanDays` |

@@ -1,16 +1,16 @@
 #!/usr/bin/env pwsh
-# Install-FSvc.Tests.ps1
+# Install.Tests.ps1
 #
-# Regression tests for Install-FSvc.ps1 (zero dependencies, no Pester).
+# Regression tests for Install.ps1 (zero dependencies, no Pester).
 # Dot-sources the script so its helper functions can be exercised without
 # touching the real install location or profile.
 #
-#   pwsh scripts/Install-FSvc.Tests.ps1
+#   pwsh scripts/Install.Tests.ps1
 
 $ErrorActionPreference = "Stop"
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $here "Install-FSvc.ps1")
+. (Join-Path $here "Install.ps1")
 
 $failures = 0
 $sep = [System.IO.Path]::PathSeparator

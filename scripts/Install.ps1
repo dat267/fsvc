@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Install-FSvc.ps1
+# Install.ps1
 #
 # Installs the standalone fsvc scripts into a stable folder, optionally adds
 # that folder to PATH, and optionally persists shared FSVC_* configuration in
@@ -16,20 +16,20 @@
 #
 # Usage:
 #   # install to ~/fsvc and record shared config for future shells
-#   pwsh scripts/Install-FSvc.ps1 -AddToPath `
+#   pwsh scripts/Install.ps1 -AddToPath `
 #        -Subdomain acme -Session "<cookie>" -CsrfToken "<token>" -LogPath "C:\logs\fsvc.log"
 #
 #   # install somewhere else / refresh an existing install
-#   pwsh scripts/Install-FSvc.ps1 -Destination C:\tools\fsvc -Force
+#   pwsh scripts/Install.ps1 -Destination C:\tools\fsvc -Force
 #
 #   # remove the installed folder and the profile block
-#   pwsh scripts/Install-FSvc.ps1 -Uninstall
+#   pwsh scripts/Install.ps1 -Uninstall
 #
 #   # remote one-liner (no clone needed); use FSVC_* env vars for config
-#   irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install-FSvc.ps1 | iex
+#   irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install.ps1 | iex
 #
 #   # remote with parameters
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install-FSvc.ps1))) -AddToPath -Subdomain acme
+#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install.ps1))) -AddToPath -Subdomain acme
 #
 # The managed block in your profile is delimited by markers and is replaced on
 # every install, so it never duplicates. Use -ProfilePath to target a different
@@ -151,7 +151,7 @@ function Get-FSvcInstallFiles {
 }
 
 # The install set for remote mode, where there is no directory to enumerate.
-# Kept in sync with scripts/ by Install-FSvc.Tests.ps1.
+# Kept in sync with scripts/ by Install.Tests.ps1.
 $script:FSvcScriptNames = @(
     "Fill-PlannedStartDates.ps1",
     "Fill-PlannedStartDates.Tests.ps1",
@@ -161,8 +161,8 @@ $script:FSvcScriptNames = @(
     "Get-TicketList.Tests.ps1",
     "Get-TicketOverview.ps1",
     "Get-TicketOverview.Tests.ps1",
-    "Install-FSvc.ps1",
-    "Install-FSvc.Tests.ps1",
+    "Install.ps1",
+    "Install.Tests.ps1",
     "Update-PlannedEndDates.ps1",
     "Update-PlannedEndDates.Tests.ps1"
 )
@@ -198,7 +198,7 @@ function Install-FSvcFromRemote {
     return [pscustomobject]@{ Copied = $copied; Skipped = $skipped }
 }
 
-# Allow dot-sourcing: `path . Install-FSvc.ps1` defines the helper functions
+# Allow dot-sourcing: `path . Install.ps1` defines the helper functions
 # without performing an install.
 if ($MyInvocation.InvocationName -eq '.') { return }
 
