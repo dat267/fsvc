@@ -46,6 +46,14 @@ function Invoke-FSvcRequest {
     if (-not $Config) { $Config = Get-FSvcEffectiveConfig }
     Assert-FSvcConnection -Config $Config
 
+    # Cookie values must be ASCII; a pasted/truncated value otherwise fails deep
+    # inside the HTTP stack with "Request headers must contain only ASCII
+    # characters".
+    if ($Config.ItildeskSession -match '[^\x20-\x7E]') {
+        $bad = [regex]::Match($Config.ItildeskSession, '[^\x20-\x7E]')
+        throw ("ItildeskSession contains a non-ASCII character (U+{0:X4}) at position {1}; cookie values are ASCII. Re-copy the _itildesk_session value." -f [int][char]$bad.Value, $bad.Index)
+    }
+
     $transport = Get-Variable -Name FSvcTransport -Scope Script -ErrorAction SilentlyContinue
     if ($transport -and $null -ne $transport.Value) {
         return & $transport.Value @{ Method = $Method; Path = $Path; Query = $Query; Body = $Body; Config = $Config }
@@ -61,6 +69,7 @@ function Invoke-FSvcRequest {
         Headers         = $headers
         Method          = $Method
         UseBasicParsing = $true
+        ErrorAction     = 'Stop'
     }
     if ($Method -ne 'GET') {
         if (-not $Config.CsrfToken) {

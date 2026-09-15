@@ -168,6 +168,14 @@ $null = Set-FSvcPlannedStartDates -View Unassigned -WhatIf
 Assert-True ($script:StubCalls[1].Query.query_hash -match '"-1"') "-View Unassigned overrides the default"
 $script:FSvcTransport = $null
 
+Write-Host "== Test-FSvcSession surfaces failures ==" -ForegroundColor Cyan
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
+$script:FSvcTransport = { param($Request) throw 'boom' }
+$threw = $false
+try { $null = Test-FSvcSession } catch { $threw = $true }
+Assert-True $threw "a failing request throws instead of reporting Ok"
+$script:FSvcTransport = $null
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

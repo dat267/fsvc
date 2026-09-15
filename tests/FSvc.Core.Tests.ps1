@@ -173,6 +173,21 @@ Assert-True ($migrated.PSObject.Properties.Name -contains 'ItildeskSession') "re
 Assert-True (-not ($migrated.PSObject.Properties.Name -contains 'SessionCookie')) "old key dropped on rewrite"
 Remove-Item -LiteralPath $legacyFile -Force -ErrorAction SilentlyContinue
 
+Write-Host "== Session value validation ==" -ForegroundColor Cyan
+$ellipsis = [char]0x2026
+$threw = $false; $msg = ''
+try {
+    $null = Invoke-FSvcRequest -Method GET -Path "tickets" -Config @{ BaseUrl = "http://stub"; ItildeskSession = "abc${ellipsis}def" }
+} catch { $threw = $true; $msg = $_.Exception.Message }
+Assert-True $threw "non-ASCII session value is rejected"
+Assert-True ($msg -match "non-ASCII") "error explains the non-ASCII problem"
+Assert-True ($msg -match "2026") "error names the offending codepoint"
+
+$trimFile = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-trim-" + [guid]::NewGuid().ToString() + ".json")
+'{"Subdomain":"  acme  "}' | Set-Content -LiteralPath $trimFile -Encoding UTF8
+Assert-Equal (Read-FSvcConfigFile -Path $trimFile)['Subdomain'] 'acme' "config values are trimmed"
+Remove-Item -LiteralPath $trimFile -Force -ErrorAction SilentlyContinue
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

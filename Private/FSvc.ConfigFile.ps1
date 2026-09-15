@@ -57,14 +57,16 @@ function Read-FSvcConfigFile {
     }
     $names = @($obj.PSObject.Properties.Name)
     foreach ($key in $script:FSvcEnvNames.Keys) {
-        if ($names -contains $key -and "$($obj.$key)" -ne '') {
-            $map[$key] = [string]$obj.$key
+        if ($names -contains $key) {
+            $value = ([string]$obj.$key).Trim()
+            if ($value -ne '') { $map[$key] = $value }
         }
     }
     foreach ($legacy in $script:FSvcLegacyConfigKeys.Keys) {
         $current = $script:FSvcLegacyConfigKeys[$legacy]
-        if (-not $map.ContainsKey($current) -and $names -contains $legacy -and "$($obj.$legacy)" -ne '') {
-            $map[$current] = [string]$obj.$legacy
+        if (-not $map.ContainsKey($current) -and $names -contains $legacy) {
+            $value = ([string]$obj.$legacy).Trim()
+            if ($value -ne '') { $map[$current] = $value }
         }
     }
     return $map
