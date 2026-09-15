@@ -12,7 +12,7 @@ function Update-FSvcPlannedEndDates {
         dates are skipped. Supports -WhatIf / -Confirm; use -Confirm:$false for
         unattended runs. Runs are serialised with a lock file.
     .EXAMPLE
-        Update-FSvcPlannedEndDates -BusinessDays 3 -TargetHour 17 -UtcOffset '+04:00' -WhatIf
+        Update-FSvcPlannedEndDates -BusinessDays 3 -TargetHour 17 -TimeZone '+04:00' -WhatIf
     .EXAMPLE
         Update-FSvcPlannedEndDates -Confirm:$false -LogPath C:\logs\fsvc.log
     #>
@@ -22,18 +22,13 @@ function Update-FSvcPlannedEndDates {
         [string]$QueryHash,
         [int]$BusinessDays = 3,
         [ValidateRange(0, 23)][int]$TargetHour = 17,
-        [string]$TimeZoneId,
-        [string]$UtcOffset,
+        [string]$TimeZone,
         [int]$PerPage = 100,
         [string]$LogPath
     )
     $cfg = Get-FSvcEffectiveConfig
-    $tz = if ($PSBoundParameters.ContainsKey('TimeZoneId')) { $TimeZoneId } else { $cfg.TimeZoneId }
-    $off = if ($PSBoundParameters.ContainsKey('UtcOffset')) { $UtcOffset } else { $cfg.UtcOffset }
+    $tz = if ($PSBoundParameters.ContainsKey('TimeZone')) { $TimeZone } else { $cfg.TimeZone }
     $effectiveLog = if ($PSBoundParameters.ContainsKey('LogPath')) { $LogPath } else { $cfg.LogPath }
-
-    $zone = Resolve-FSvcTimeZone -Id $tz
-    $offset = ConvertTo-FSvcUtcOffset -Value $off
 
     $tickets = @(if ($QueryHash) {
             Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg
@@ -48,7 +43,7 @@ function Update-FSvcPlannedEndDates {
         $latest = Get-FSvcLatestConversation -TicketId $t.id -Config $cfg
         $latestAt = if ($null -ne $latest) { $latest.At } else { $null }
         $target = Get-FSvcPlannedEndDate -Ticket $t -LatestConversationAt $latestAt -Now $now `
-            -BusinessDays $BusinessDays -TargetHour $TargetHour -Zone $zone -Offset $offset
+            -BusinessDays $BusinessDays -TargetHour $TargetHour -TimeZone $tz
         if ($null -eq $target) { continue }
         $changes += [pscustomobject]@{
             Id    = $t.id
