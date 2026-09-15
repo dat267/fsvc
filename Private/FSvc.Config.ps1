@@ -17,8 +17,9 @@ $script:FSvcEnvNames = @{
 }
 
 # Returns the effective config hashtable: per-call override, then the session
-# value from Set-FSvcConfig, then the persisted config file, then the
-# environment variable, then $null. BaseUrl is
+# value from Set-FSvcConfig, then the environment variable, then the persisted
+# config file, then $null. Environment above file follows the usual convention,
+# so an FSVC_* variable can override saved settings for one process. BaseUrl is
 # derived from Subdomain when not set outright.
 function Get-FSvcEffectiveConfig {
     param([hashtable]$Overrides)
@@ -30,8 +31,8 @@ function Get-FSvcEffectiveConfig {
         $value = $null
         if ($Overrides -and $Overrides.ContainsKey($key)) { $value = $Overrides[$key] }
         if (-not $value -and $stored -and $stored.Value.ContainsKey($key)) { $value = $stored.Value[$key] }
-        if (-not $value -and $fileCfg.ContainsKey($key)) { $value = $fileCfg[$key] }
         if (-not $value) { $value = [Environment]::GetEnvironmentVariable($script:FSvcEnvNames[$key]) }
+        if (-not $value -and $fileCfg.ContainsKey($key)) { $value = $fileCfg[$key] }
         $cfg[$key] = $value
     }
     if (-not $cfg.BaseUrl -and $cfg.Subdomain) {

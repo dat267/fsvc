@@ -64,8 +64,8 @@ consumes the tag's source archive.
 `Set-FSvcConfig` stores settings for the session and **persists them to a small
 JSON file** for future sessions: `%LOCALAPPDATA%\fsvc\config.json` on Windows,
 `~/.config/fsvc/config.json` elsewhere. The effective value is resolved as
-per-call parameter, then session value, then the config file, then the
-`FSVC_*` environment variable.
+per-call parameter, then session value, then the `FSVC_*` environment variable,
+then the config file.
 
 Within a session, `Set-FSvcConfig` values take precedence; the `FSVC_*`
 environment variables fill anything not set. Passing an empty value clears a

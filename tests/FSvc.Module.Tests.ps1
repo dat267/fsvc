@@ -41,6 +41,14 @@ Assert-True ($persisted.Subdomain -eq 'acme') "setting persisted to the config f
 Assert-True ($persisted.SessionCookie -eq 'secret') "session cookie persisted to the config file"
 Remove-Item -LiteralPath $tempConfig -Force -ErrorAction SilentlyContinue
 
+Write-Host "== No-op guard ==" -ForegroundColor Cyan
+$tempConfig = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-noop-" + [guid]::NewGuid().ToString() + ".json")
+$warnings = @()
+Set-FSvcConfig -ConfigPath $tempConfig -WarningVariable warnings -WarningAction SilentlyContinue | Out-Null
+Assert-True (@($warnings).Count -ge 1) "warns when no settings are supplied"
+Assert-True (-not (Test-Path -LiteralPath $tempConfig)) "writes no config file when nothing is supplied"
+Remove-Item -LiteralPath $tempConfig -Force -ErrorAction SilentlyContinue
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

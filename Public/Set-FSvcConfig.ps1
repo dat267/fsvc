@@ -35,6 +35,11 @@ function Set-FSvcConfig {
         }
     }
 
+    if ($values.Count -eq 0) {
+        Write-Warning "No settings supplied; nothing changed. Pass one or more settings (for example -Subdomain) or run Get-FSvcConfig to see the current values."
+        return
+    }
+
     $stored = Get-Variable -Name FSvcConfig -Scope Script -ErrorAction SilentlyContinue
     if (-not $stored) {
         $script:FSvcConfig = @{}
