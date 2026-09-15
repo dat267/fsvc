@@ -19,6 +19,25 @@ The private API is undocumented and reverse-engineered; it can change without
 warning. See [`docs/private-api-notes.md`](docs/private-api-notes.md) for the
 accumulated knowledge.
 
+## Install
+
+The installer copies every script to a stable folder (default `~/fsvc`),
+optionally adds it to `PATH`, and can store shared configuration in your
+PowerShell profile so all scripts pick it up:
+
+```powershell
+pwsh scripts/Install-FSvc.ps1 -AddToPath `
+     -Subdomain acme -Session "<cookie>" -CsrfToken "<token>" -LogPath "C:\logs\fsvc.log"
+
+# later: remove the folder and the profile block
+pwsh scripts/Install-FSvc.ps1 -Uninstall
+```
+
+- `-Destination` chooses the folder (default `~/fsvc`); `-Force` overwrites.
+- `-ProfilePath` targets a specific profile (useful for testing).
+- The profile block is delimited by markers and replaced on every run, so it
+  never duplicates and your other profile content is untouched.
+
 ## Quick start
 
 Configure once per session with environment variables, or edit the CONFIG block
@@ -51,6 +70,7 @@ before applying (unless auto-confirmed).
 
 | Script | Purpose | Key knobs |
 | --- | --- | --- |
+| `Install-FSvc.ps1` | Install/copy the scripts, optionally add to `PATH` and persist shared config; `-Uninstall` removes both | `-Destination`, `-AddToPath`, `-Force`, `-Uninstall`, `-ProfilePath` |
 | `Get-TicketList.ps1` | List tickets by saved-filter ID or raw `query_hash`, rendered as a table | `$FilterId` / `$QueryHash` (exactly one), `$Properties`, `$PerPage` |
 | `Get-TicketContent.ps1` | Show one ticket and its full conversation trace; `-AsObject` emits `{ Ticket, Conversations }` for piping | `-Id`, `-AsObject` |
 | `Get-TicketOverview.ps1` | Three-list triage: unassigned (customizable conditions), waiting on customer > N business days, awaiting agent | `$UnassignedQueryHash`, `$AssignedQueryHash`, `$OlderThanDays` |
