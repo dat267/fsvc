@@ -29,11 +29,18 @@ foreach ($fn in $expected) { Assert-True ($exported -contains $fn) "exports $fn"
 Assert-True (-not ($exported -contains 'Invoke-FSvcGet')) "private helpers are not exported"
 
 Write-Host "== Config round-trip ==" -ForegroundColor Cyan
-Set-FSvcConfig -Subdomain acme -SessionCookie secret -CsrfToken tok
+$tempProfile = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-module-" + [guid]::NewGuid().ToString() + ".ps1")
+# Keep persistence out of the real profile and user environment during tests.
+& (Get-Module fsvc) { $script:FSvcSetUserEnvironment = { param($n, $v) } }
+Set-FSvcConfig -Subdomain acme -SessionCookie secret -CsrfToken tok -ProfilePath $tempProfile
 $cfg = Get-FSvcConfig
 Assert-True ($cfg.Subdomain -eq 'acme') "config stored"
 Assert-True ($cfg.SessionCookie -eq '<set>') "session is masked in output"
 Assert-True ($cfg.BaseUrl -eq 'https://acme.freshservice.com') "base url derived"
+$persisted = & (Get-Module fsvc) { param($p) Read-FSvcProfileSettings -ProfilePath $p } $tempProfile
+Assert-True ($persisted['FSVC_SUBDOMAIN'] -eq 'acme') "setting persisted for future sessions"
+& (Get-Module fsvc) { $script:FSvcSetUserEnvironment = $null }
+Remove-Item -LiteralPath $tempProfile -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }

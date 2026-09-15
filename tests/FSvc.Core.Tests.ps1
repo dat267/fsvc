@@ -137,6 +137,49 @@ $parsedUnassigned = $unassigned | ConvertFrom-Json
 Assert-Equal $parsedSelf.Count 2 "self-assigned view has two conditions"
 Assert-Equal $parsedUnassigned.Count 2 "unassigned view has two conditions"
 
+Write-Host "== Persistent settings ==" -ForegroundColor Cyan
+$envMap = ConvertTo-FSvcEnvironmentMap -Settings @{ Subdomain = 'acme'; SessionCookie = ''; CsrfToken = 'tok'; Unknown = 'x' }
+Assert-Equal $envMap['FSVC_SUBDOMAIN'] 'acme' "subdomain mapped"
+Assert-Equal $envMap['FSVC_CSRF_TOKEN'] 'tok' "csrf mapped"
+Assert-True ($envMap.ContainsKey('FSVC_ITILDESK_SESSION')) "empty value included so it can be cleared"
+Assert-True (-not $envMap.ContainsKey('Unknown')) "unknown keys are ignored"
+
+$block = New-FSvcProfileBlock -Map @{ 'FSVC_SUBDOMAIN' = 'acme'; 'FSVC_CSRF_TOKEN' = "a b" }
+Assert-True ($block -match [regex]::Escape($script:FSvcBlockStart)) "block start marker"
+Assert-True ($block -match "FSVC_SUBDOMAIN = 'acme'") "assignment rendered"
+Assert-True ($block -match "FSVC_CSRF_TOKEN = 'a b'") "value rendered as-is"
+Assert-Equal (New-FSvcProfileBlock -Map @{}).Trim() "" "empty map yields no block"
+
+$pf = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-persist-" + [guid]::NewGuid().ToString() + ".ps1")
+[System.IO.File]::WriteAllText($pf, "# mine`n")
+Update-FSvcProfile -ProfilePath $pf -Block (New-FSvcProfileBlock -Map @{ 'FSVC_SUBDOMAIN' = 'one' })
+Assert-Equal (Read-FSvcProfileSettings -ProfilePath $pf)['FSVC_SUBDOMAIN'] 'one' "profile block readable"
+Update-FSvcProfile -ProfilePath $pf -Block (New-FSvcProfileBlock -Map @{ 'FSVC_SUBDOMAIN' = 'two'; 'FSVC_CSRF_TOKEN' = 't' })
+$readBack = Read-FSvcProfileSettings -ProfilePath $pf
+Assert-Equal $readBack['FSVC_SUBDOMAIN'] 'two' "block replaced"
+Assert-Equal $readBack['FSVC_CSRF_TOKEN'] 't' "second key present"
+Assert-True ((Get-Content -LiteralPath $pf -Raw) -match '# mine') "other profile content preserved"
+Update-FSvcProfile -ProfilePath $pf -Block ""
+Assert-True (-not ((Get-Content -LiteralPath $pf -Raw) -match [regex]::Escape($script:FSvcBlockStart))) "block removed"
+Remove-Item -LiteralPath $pf -Force
+
+Write-Host "== Set-FSvcPersistentSettings ==" -ForegroundColor Cyan
+$pf2 = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-persist2-" + [guid]::NewGuid().ToString() + ".ps1")
+$script:persistCalls = @{}
+Set-FSvcPersistentSettings -Settings @{ Subdomain = 'acme'; CsrfToken = '' } -OnWindows $true -ProfilePath $pf2 -SetUserEnvironment { param($n, $v) $script:persistCalls[$n] = $v }
+Assert-Equal $script:persistCalls['FSVC_SUBDOMAIN'] 'acme' "windows path sets the user env var"
+Assert-True ($script:persistCalls.ContainsKey('FSVC_CSRF_TOKEN')) "windows path clears the empty key"
+Assert-True (-not (Test-Path -LiteralPath $pf2)) "windows path leaves the profile untouched"
+
+Set-FSvcPersistentSettings -Settings @{ Subdomain = 'acme' } -OnWindows $false -ProfilePath $pf2 -SetUserEnvironment { param($n, $v) }
+Set-FSvcPersistentSettings -Settings @{ CsrfToken = 'tok' } -OnWindows $false -ProfilePath $pf2 -SetUserEnvironment { param($n, $v) }
+$merged = Read-FSvcProfileSettings -ProfilePath $pf2
+Assert-Equal $merged['FSVC_SUBDOMAIN'] 'acme' "non-windows merges first key"
+Assert-Equal $merged['FSVC_CSRF_TOKEN'] 'tok' "non-windows merges second key"
+Set-FSvcPersistentSettings -Settings @{ Subdomain = '' } -OnWindows $false -ProfilePath $pf2 -SetUserEnvironment { param($n, $v) }
+Assert-True (-not (Read-FSvcProfileSettings -ProfilePath $pf2).ContainsKey('FSVC_SUBDOMAIN')) "empty clears a persisted key"
+Remove-Item -LiteralPath $pf2 -Force -ErrorAction SilentlyContinue
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

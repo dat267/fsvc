@@ -5,6 +5,14 @@ if (-not (Get-Variable -Name FSvcConfig -Scope Script -ErrorAction SilentlyConti
     $script:FSvcConfig = @{}
 }
 
+# Persistent-target overrides (tests point these at temp paths/stubs).
+if (-not (Get-Variable -Name FSvcProfilePath -Scope Script -ErrorAction SilentlyContinue)) {
+    $script:FSvcProfilePath = $PROFILE
+}
+if (-not (Get-Variable -Name FSvcSetUserEnvironment -Scope Script -ErrorAction SilentlyContinue)) {
+    $script:FSvcSetUserEnvironment = $null
+}
+
 $script:FSvcEnvNames = @{
     Subdomain     = 'FSVC_SUBDOMAIN'
     SessionCookie = 'FSVC_ITILDESK_SESSION'

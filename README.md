@@ -68,16 +68,24 @@ consumes.
 
 ## Configure
 
-Settings live for the session. Values set with `Set-FSvcConfig` take
-precedence; the `FSVC_*` environment variables fill anything not set in the
-session, so a shared environment configuration works without calling
-`Set-FSvcConfig` at all.
+`Set-FSvcConfig` stores settings and **persists them for future sessions**: as
+user environment variables on Windows (visible to scheduled tasks and other
+processes), or a managed block in your PowerShell profile on other platforms.
+Settings are also applied to the current process.
+
+Within a session, `Set-FSvcConfig` values take precedence; the `FSVC_*`
+environment variables fill anything not set. Passing an empty value clears a
+setting from both the session and the persisted store.
 
 ```powershell
 Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
 Get-FSvcConfig   # shows the effective values (secrets masked)
 Test-FSvcSession # verifies the cookie works
+Set-FSvcConfig -SessionCookie ''   # clear a persisted setting
 ```
+
+`SessionCookie` and `CsrfToken` are persisted in plaintext, readable by any
+process running as you; clear them when they expire.
 
 | Setting | Environment variable | Purpose |
 | --- | --- | --- |
