@@ -229,9 +229,9 @@ $thread = @(
 Assert-Equal (Get-FSvcUnansweredCount -Conversations $thread) 2 "counts only the trailing inbound streak"
 Assert-Equal (Get-FSvcUnansweredCount -Conversations @()) 0 "empty thread is zero"
 Assert-Equal (Get-FSvcUnansweredCount -Conversations @([pscustomobject]@{ Direction = 'outgoing' })) 0 "agent message first is zero"
-$fu = New-FSvcOverviewRow -Category 'awaiting_agent' -Ticket ([pscustomobject]@{ id = 7; subject = 's' }) -RawDays 0.0625 -Since ([datetimeoffset]'2026-09-01T10:00:00+04:00') -FollowUps 3 -BaseUrl 'http://x'
-Assert-Equal $fu.FollowUps 3 "FollowUps passes through the row builder"
-Assert-True ($null -eq (New-FSvcOverviewRow -Category 'unassigned' -Ticket ([pscustomobject]@{ id = 7; subject = 's' }) -RawDays 1 -Since $null -FollowUps $null -BaseUrl 'http://x').FollowUps) "unassigned rows leave FollowUps null"
+$fu = New-FSvcOverviewRow -Category 'awaiting_agent' -Ticket ([pscustomobject]@{ id = 7; subject = 's' }) -RawDays 0.0625 -Since ([datetimeoffset]'2026-09-01T10:00:00+04:00') -Unanswered 3 -BaseUrl 'http://x'
+Assert-Equal $fu.Unanswered 3 "Unanswered passes through the row builder"
+Assert-True ($null -eq (New-FSvcOverviewRow -Category 'unassigned' -Ticket ([pscustomobject]@{ id = 7; subject = 's' }) -RawDays 1 -Since $null -Unanswered $null -BaseUrl 'http://x').Unanswered) "unassigned rows leave Unanswered null"
 
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }

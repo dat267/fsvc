@@ -198,7 +198,7 @@ Assert-True ($null -ne $ov[0].Since) "Since is a timestamp on the object"
 Assert-True ($null -ne $ov[0].Days) "numeric Days is still on the object"
 $script:FSvcTransport = $null
 
-Write-Host "== Customer follow-ups ==" -ForegroundColor Cyan
+Write-Host "== Unanswered customer messages ==" -ForegroundColor Cyan
 $script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
 New-StubTransport -Handler {
     param($Request)
@@ -217,8 +217,8 @@ New-StubTransport -Handler {
 $followRows = @(Get-FSvcTicketOverview -OlderThanDays 2)
 Assert-Equal $followRows.Count 1 "one self-assigned ticket"
 Assert-Equal $followRows[0].Category 'awaiting_agent' "last message is from the customer"
-Assert-Equal $followRows[0].FollowUps 3 "counts unanswered customer messages across pages"
-Assert-True (($followRows[0] | Out-String -Width 4096) -match 'FollowUps\s*:\s*3') "rendered view shows the follow-up count"
+Assert-Equal $followRows[0].Unanswered 3 "counts unanswered customer messages across pages"
+Assert-True (($followRows[0] | Out-String -Width 4096) -match 'Unanswered\s*:\s*3') "rendered view shows the unanswered count"
 $script:FSvcTransport = $null
 
 Write-Host ""

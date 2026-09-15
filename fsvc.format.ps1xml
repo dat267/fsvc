@@ -13,7 +13,7 @@
               <ListItem><PropertyName>Category</PropertyName></ListItem>
               <ListItem><PropertyName>Subject</PropertyName></ListItem>
               <ListItem><PropertyName>Elapsed</PropertyName></ListItem>
-              <ListItem><Label>FollowUps</Label><ScriptBlock>if ($_.FollowUps) { $_.FollowUps } else { '-' }</ScriptBlock></ListItem>
+              <ListItem><Label>Unanswered</Label><ScriptBlock>if ($_.Unanswered) { $_.Unanswered } else { '-' }</ScriptBlock></ListItem>
               <ListItem><Label>Since</Label><ScriptBlock>if ($_.Since) { $_.Since.ToString('yyyy-MM-dd HH:mm') } else { '' }</ScriptBlock></ListItem>
               <ListItem><PropertyName>Link</PropertyName></ListItem>
             </ListItems>

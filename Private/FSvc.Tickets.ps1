@@ -236,7 +236,7 @@ function New-FSvcOverviewRow {
         [object]$Ticket,
         [double]$RawDays,
         [AllowNull()]$Since,
-        [AllowNull()]$FollowUps,
+        [AllowNull()]$Unanswered,
         [string]$BaseUrl
     )
     return [pscustomobject]@{
@@ -247,7 +247,7 @@ function New-FSvcOverviewRow {
         Days       = [math]::Round($RawDays, 1)
         Elapsed    = Format-FSvcDuration -Days $RawDays
         Since      = $Since
-        FollowUps  = $FollowUps
+        Unanswered = $Unanswered
         Link       = ("{0}/a/tickets/{1}" -f $BaseUrl, $Ticket.id)
     }
 }

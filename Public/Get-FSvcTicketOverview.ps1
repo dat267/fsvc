@@ -9,7 +9,7 @@ function Get-FSvcTicketOverview {
         ordered by Days descending (longest-waiting first). Each row exposes the
         numeric business-day count (Days) plus a humanized Elapsed ("13d 14h", or "1h 30m" below a day)
         and the Since timestamp the count is measured from (created_at for
-        unassigned rows, the last message otherwise). FollowUps is the number
+        unassigned rows, the last message otherwise). Unanswered is the number
         of customer messages the agent has not answered yet (consecutive
         incoming messages since the last agent message); it is $null for
         unassigned rows, which are not fetched conversation by conversation.
@@ -36,7 +36,7 @@ function Get-FSvcTicketOverview {
         $created = ConvertTo-FSDateTimeOffset $t.created_at
         $days = 0.0
         if ($null -ne $created) { $days = Get-FSvcBusinessDaysBetween -From $created -To $now }
-        $out += New-FSvcOverviewRow -Category 'unassigned' -Ticket $t -RawDays $days -Since $created -FollowUps $null -BaseUrl $cfg.BaseUrl
+        $out += New-FSvcOverviewRow -Category 'unassigned' -Ticket $t -RawDays $days -Since $created -Unanswered $null -BaseUrl $cfg.BaseUrl
     }
 
     $assigned = if ($AssignedQueryHash) {
@@ -56,7 +56,7 @@ function Get-FSvcTicketOverview {
         if ($null -ne $lastMessage) { $ref = $lastMessage }
         $days = 0.0
         if ($null -ne $ref) { $days = Get-FSvcBusinessDaysBetween -From $ref -To $now }
-        $out += New-FSvcOverviewRow -Category $category -Ticket $t -RawDays $days -Since $ref -FollowUps $thread.Unanswered -BaseUrl $cfg.BaseUrl
+        $out += New-FSvcOverviewRow -Category $category -Ticket $t -RawDays $days -Since $ref -Unanswered $thread.Unanswered -BaseUrl $cfg.BaseUrl
     }
     return (Sort-FSvcOverviewRows -Rows $out)
 }
