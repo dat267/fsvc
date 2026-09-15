@@ -32,44 +32,30 @@ function Update-FSvcPlannedEndDates {
     $zone = Resolve-FSvcTimeZone -Id $tz
     $offset = ConvertTo-FSvcUtcOffset -Value $off
 
-    $lockPath = Join-Path ([System.IO.Path]::GetTempPath()) 'fsvc-planned-end-dates.lock'
-    $lock = Enter-FSvcRunLock -Path $lockPath
-    if ($null -eq $lock) { throw "Another fsvc run is in progress (lock: $lockPath). Delete it if stale." }
-    $logging = Start-FSvcLogging -Path $effectiveLog
-    try {
-        $tickets = @(Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg)
-        $accountOffset = Get-FSvcAccountOffset -Tickets $tickets -Fallback ([datetimeoffset]::Now)
-        $now = ([datetimeoffset]::Now).ToOffset($accountOffset)
+    $tickets = @(Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg)
+    $accountOffset = Get-FSvcAccountOffset -Tickets $tickets -Fallback ([datetimeoffset]::Now)
+    $now = ([datetimeoffset]::Now).ToOffset($accountOffset)
 
-        $changes = @()
-        foreach ($t in $tickets) {
-            $latest = Get-FSvcLatestConversation -TicketId $t.id -Config $cfg
-            $base = $null
-            if ($null -ne $latest) { $base = $latest.CreatedAt }
-            if ($null -eq $base) { $base = ConvertTo-FSDateTimeOffset $t.created_at }
-            if ($null -eq $base) { continue }
+    $changes = @()
+    foreach ($t in $tickets) {
+        $latest = Get-FSvcLatestConversation -TicketId $t.id -Config $cfg
+        $base = $null
+        if ($null -ne $latest) { $base = $latest.CreatedAt }
+        if ($null -eq $base) { $base = ConvertTo-FSDateTimeOffset $t.created_at }
+        if ($null -eq $base) { continue }
 
-            $target = Get-FSvcTargetEndDate -Base $base -Days $BusinessDays -Hour $TargetHour -Zone $zone -Offset $offset -Now $now
-            if (-not (Test-FSvcEndDateNeedsUpdate -PlannedEndDate $t.planned_end_date -Target $target)) { continue }
-            $changes += [pscustomobject]@{
-                Id    = $t.id
-                Field = 'planned_end_date'
-                From  = $t.planned_end_date
-                To    = Format-Iso8601 $target
-            }
+        $target = Get-FSvcTargetEndDate -Base $base -Days $BusinessDays -Hour $TargetHour -Zone $zone -Offset $offset -Now $now
+        if (-not (Test-FSvcEndDateNeedsUpdate -PlannedEndDate $t.planned_end_date -Target $target)) { continue }
+        $changes += [pscustomobject]@{
+            Id    = $t.id
+            Field = 'planned_end_date'
+            From  = $t.planned_end_date
+            To    = Format-Iso8601 $target
         }
-
-        foreach ($c in $changes) {
-            $applied = $false
-            if ($PSCmdlet.ShouldProcess(("ticket {0}" -f $c.Id), ("set planned_end_date to {0}" -f $c.To))) {
-                Invoke-FSvcPut -Path ("tickets/{0}" -f $c.Id) -Body @{ planned_end_date = $c.To } -Config $cfg | Out-Null
-                $applied = $true
-            }
-            $c | Add-Member -NotePropertyName Applied -NotePropertyValue $applied
-            $c
-        }
-    } finally {
-        Stop-FSvcLogging -Active $logging
-        Exit-FSvcRunLock -Handle $lock -Path $lockPath
     }
+
+    Invoke-FSvcChangeSet -Change $changes -Config $cfg -LogPath $effectiveLog `
+        -LockName 'fsvc-planned-end-dates' `
+        -Should { param($Target, $Action) $PSCmdlet.ShouldProcess($Target, $Action) } `
+        -Apply { param($c) Invoke-FSvcPut -Path ("tickets/{0}" -f $c.Id) -Body @{ planned_end_date = $c.To } -Config $cfg }
 }
