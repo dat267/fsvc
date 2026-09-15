@@ -39,13 +39,10 @@ function Update-FSvcPlannedEndDates {
     $changes = @()
     foreach ($t in $tickets) {
         $latest = Get-FSvcLatestConversation -TicketId $t.id -Config $cfg
-        $base = $null
-        if ($null -ne $latest) { $base = $latest.CreatedAt }
-        if ($null -eq $base) { $base = ConvertTo-FSDateTimeOffset $t.created_at }
-        if ($null -eq $base) { continue }
-
-        $target = Get-FSvcTargetEndDate -Base $base -Days $BusinessDays -Hour $TargetHour -Zone $zone -Offset $offset -Now $now
-        if (-not (Test-FSvcEndDateNeedsUpdate -PlannedEndDate $t.planned_end_date -Target $target)) { continue }
+        $latestAt = if ($null -ne $latest) { $latest.CreatedAt } else { $null }
+        $target = Get-FSvcPlannedEndDate -Ticket $t -LatestConversationAt $latestAt -Now $now `
+            -BusinessDays $BusinessDays -TargetHour $TargetHour -Zone $zone -Offset $offset
+        if ($null -eq $target) { continue }
         $changes += [pscustomobject]@{
             Id    = $t.id
             Field = 'planned_end_date'

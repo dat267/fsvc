@@ -113,6 +113,21 @@ Assert-Equal $list.Count 2 "command walks pages"
 Assert-Equal $list[1].id 2 "second page returned"
 $script:FSvcTransport = $null
 
+Write-Host "== Update-FSvcPlannedEndDates policy via command ==" -ForegroundColor Cyan
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't'; UtcOffset = '+04:00' }
+New-StubTransport -Handler {
+    param($Request)
+    if ($Request.Method -eq 'PUT') { return '{"ticket":{}}' }
+    if ($Request.Path -like '*/conversations') { return '{"conversations":[{"id":1,"user_id":2,"created_at":"2026-09-11T09:00:00+04:00","body_text":"x"}],"meta":{"has_next":false}}' }
+    return '{"tickets":[{"id":10,"subject":"T","planned_end_date":null,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}'
+}
+$out = @(Update-FSvcPlannedEndDates -WhatIf)
+Assert-Equal $out.Count 1 "one change proposed"
+Assert-True ($out[0].To -match 'T17:00:00\+04:00$') "target is at the configured hour and offset"
+Assert-Equal $out[0].Applied $false "-WhatIf marks not applied"
+Assert-True (-not (@($script:StubCalls | Where-Object { $_.Method -eq 'PUT' }).Count)) "-WhatIf issues no PUT"
+$script:FSvcTransport = $null
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

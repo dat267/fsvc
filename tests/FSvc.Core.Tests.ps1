@@ -89,6 +89,29 @@ Exit-FSvcRunLock -Handle $h1 -Path $lockPath
 Assert-True ($null -ne (Enter-FSvcRunLock -Path $lockPath)) "acquire after release succeeds" | Out-Null
 $h2 = Enter-FSvcRunLock -Path $lockPath; Exit-FSvcRunLock -Handle $h2 -Path $lockPath
 
+Write-Host "== Get-FSvcPlannedEndDate (policy) ==" -ForegroundColor Cyan
+$zero = [timespan]::Zero
+$before = [datetimeoffset]::Parse("2026-09-01T00:00:00+00:00")
+$mon = [pscustomobject]@{ created_at = "2026-09-07T10:00:00+00:00"; planned_end_date = $null }   # Monday
+# base = created_at; Mon +3bd = Thu 17:00
+Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $mon -LatestConversationAt $null -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero)) "2026-09-10T17:00:00Z" "no comment uses created_at"
+# base = last comment; Tue 2026-09-08 +3bd = Fri 17:00
+$comment = [datetimeoffset]::Parse("2026-09-08T09:00:00+00:00")
+Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $mon -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero)) "2026-09-11T17:00:00Z" "comment drives the base"
+# already exactly the target instant -> no change
+$same = [pscustomobject]@{ created_at = "2026-09-01T10:00:00+00:00"; planned_end_date = "2026-09-11T17:00:00+00:00" }
+Assert-Equal (Get-FSvcPlannedEndDate -Ticket $same -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero) $null "identical date is skipped"
+# a far-future date differs -> corrected
+$far = [pscustomobject]@{ created_at = "2026-09-01T10:00:00+00:00"; planned_end_date = "2099-01-01T00:00:00Z" }
+Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $far -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero)) "2026-09-11T17:00:00Z" "far-future date is corrected"
+# stale base clamps into the future relative to now
+$stale = [pscustomobject]@{ created_at = "2026-08-01T10:00:00+00:00"; planned_end_date = $null }
+$nowTue = [datetimeoffset]::Parse("2026-09-08T12:00:00+00:00")
+Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $stale -LatestConversationAt $null -Now $nowTue -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero)) "2026-09-08T17:00:00Z" "stale target clamps to today at hour"
+# no dates at all -> no target
+$empty = [pscustomobject]@{ created_at = $null; planned_end_date = $null }
+Assert-Equal (Get-FSvcPlannedEndDate -Ticket $empty -LatestConversationAt $null -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero) $null "no base date yields no target"
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

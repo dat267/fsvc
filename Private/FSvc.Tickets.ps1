@@ -79,3 +79,28 @@ function Format-FSvcDays {
     $rounded = [math]::Round($Days, 1, [System.MidpointRounding]::AwayFromZero)
     return $rounded.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
 }
+
+# Computes the planned_end_date a ticket should have, or $null when it should be
+# left alone. The base is the latest conversation timestamp (any kind) when
+# present, else created_at. The target is base + N business days at the target
+# hour in the target zone/offset, clamped so it is never in the past. Returns
+# $null when there is no base date, or when the ticket already holds that exact
+# instant (so re-running is a no-op).
+function Get-FSvcPlannedEndDate {
+    param(
+        [Parameter(Mandatory)]$Ticket,
+        [AllowNull()]$LatestConversationAt,
+        [datetimeoffset]$Now,
+        [int]$BusinessDays = 3,
+        [int]$TargetHour = 17,
+        [AllowNull()]$Zone,
+        [AllowNull()]$Offset
+    )
+    $base = ConvertTo-FSDateTimeOffset $LatestConversationAt
+    if ($null -eq $base) { $base = ConvertTo-FSDateTimeOffset $Ticket.created_at }
+    if ($null -eq $base) { return $null }
+
+    $target = Get-FSvcTargetEndDate -Base $base -Days $BusinessDays -Hour $TargetHour -Zone $Zone -Offset $Offset -Now $Now
+    if (-not (Test-FSvcEndDateNeedsUpdate -PlannedEndDate $Ticket.planned_end_date -Target $target)) { return $null }
+    return $target
+}
