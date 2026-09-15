@@ -245,6 +245,11 @@ $s5 = Get-FSvcWebSession -Config @{ BaseUrl = 'https://a.example'; ItildeskSessi
 $s6 = Get-FSvcWebSession -Config @{ BaseUrl = 'https://a.example'; ItildeskSession = 'xyz' }
 Assert-True ([object]::ReferenceEquals($s4, $s5)) "same base URL and cookie reuses the session"
 Assert-True (-not [object]::ReferenceEquals($s4, $s6)) "a changed cookie gets a fresh session"
+Assert-Equal ($s6.Cookies.GetCookies([uri]'https://a.example')[0].Value) 'xyz' "refreshed session carries the new cookie"
+$jar = $s6.Cookies.GetCookies([uri]'https://a.example')
+Assert-Equal $jar.Count 1 "auth cookie lives in the session jar, not a header"
+Assert-Equal $jar[0].Name '_itildesk_session' "cookie keeps its name"
+Assert-Equal (Get-FSvcWebSession -Config @{ BaseUrl = 'https://nocookie.example' }).Cookies.GetCookies([uri]'https://nocookie.example').Count 0 "no cookie is added when none is configured"
 
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }

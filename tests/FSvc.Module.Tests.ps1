@@ -53,6 +53,12 @@ Write-Host "== Format data ==" -ForegroundColor Cyan
 $fmt = Get-FormatData -TypeName 'FSvc.TicketOverviewRow'
 Assert-True ($null -ne $fmt) "module registers the overview format view"
 
+Write-Host "== PowerShell 5.1 / 7 parity ==" -ForegroundColor Cyan
+$httpSource = Get-Content -LiteralPath (Join-Path $repoRoot 'Private/FSvc.Http.ps1') -Raw
+Assert-True ($httpSource -notmatch 'PSEdition') "no PowerShell-edition branching in the HTTP path"
+Assert-True ($httpSource -notmatch '"Cookie"\s*=') "auth cookie travels in the WebSession, not a Cookie header"
+Assert-True ($httpSource -match 'WebSession') "requests pass the shared WebSession"
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

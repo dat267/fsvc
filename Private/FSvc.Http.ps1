@@ -48,9 +48,16 @@ function Get-FSvcWebSession {
     $cookie = [string]$Config.ItildeskSession
     $entry = $script:FSvcWebSessions[$key]
     if ($null -eq $entry -or $entry.Cookie -ne $cookie) {
+        $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+        # The auth cookie rides in the session jar rather than a Cookie header,
+        # so PowerShell 5.1 and 7 take exactly the same path (5.1 rejects an
+        # explicit Cookie header combined with a session cookie container).
+        if ($cookie -and $Config.BaseUrl) {
+            $session.Cookies.Add([System.Net.Cookie]::new('_itildesk_session', $cookie, '/', ([uri]$Config.BaseUrl).Host))
+        }
         $entry = [pscustomobject]@{
             Cookie  = $cookie
-            Session = (New-Object Microsoft.PowerShell.Commands.WebRequestSession)
+            Session = $session
         }
         $script:FSvcWebSessions[$key] = $entry
     }
@@ -86,20 +93,14 @@ function Invoke-FSvcRequest {
     $url = Add-FSvcQuery -Path $Path -QueryString (Build-FSvcQueryString -Query $Query)
     $headers = @{
         "Accept" = "application/json"
-        "Cookie" = "_itildesk_session=$($Config.ItildeskSession)"
     }
     $params = @{
         Uri             = ("{0}/api/_/{1}" -f $Config.BaseUrl.TrimEnd('/'), $url)
         Headers         = $headers
         Method          = $Method
         UseBasicParsing = $true
+        WebSession      = (Get-FSvcWebSession -Config $Config)
         ErrorAction     = 'Stop'
-    }
-    # Reuse one session per base URL so the TLS connection stays alive.
-    # Windows PowerShell 5.1 refuses an explicit Cookie header together with a
-    # session cookie container, so it keeps the per-call client (no regression).
-    if ($PSVersionTable.PSEdition -eq 'Core') {
-        $params['WebSession'] = Get-FSvcWebSession -Config $Config
     }
     if ($Method -ne 'GET') {
         if (-not $Config.CsrfToken) {
