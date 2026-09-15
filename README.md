@@ -20,19 +20,45 @@ Update-FSvcPlannedEndDates -WhatIf
 
 ## Install
 
-```powershell
-# PowerShell 7.4+ / 5.1 with PowerShellGet
-Install-Module fsvc -Scope CurrentUser
+This module is **not published to the PowerShell Gallery**. Install it from
+GitHub instead — the bootstrap copies it into your user module folder, after
+which `Import-Module fsvc` works.
 
-# or with PSResourceGet
-Install-PSResource fsvc -Scope CurrentUser
+```powershell
+# remote one-liner (installs from main)
+irm https://raw.githubusercontent.com/dat267/fsvc/main/Install.ps1 | iex
+
+# a specific release tag, or refresh an existing install
+pwsh Install.ps1 -Version v1.0.0 -Force
+pwsh Install.ps1 -Ref main -Force
+
+# remove it
+pwsh Install.ps1 -Uninstall
 ```
 
-From a clone (no publish needed):
+After installing:
 
 ```powershell
+Import-Module fsvc
+Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
+```
+
+Other ways to get it running:
+
+```powershell
+# clone and import, no install step
 Import-Module ./fsvc.psd1
+
+# if you clone directly into a PSModulePath folder
+Import-Module fsvc
 ```
+
+`Install-Module` / `Install-PSResource` require a package repository (the Gallery
+or a private NuGet feed); a GitHub repo URL is not one. If you operate a feed,
+`Publish-PSResource -Path . -Repository <feed>` from a clone is the standard
+route. Tagging `v*` builds and attaches the packaged module as a GitHub release
+asset (`.github/workflows/release.yml`), which `Install.ps1 -Version <tag>`
+consumes.
 
 ## Configure
 
@@ -119,8 +145,8 @@ Layout:
 - `tests/` — zero-dependency suites (dot-source `Private` for unit tests;
   `FSvc.Module.Tests.ps1` validates the manifest and exports).
 
-CI runs the suites on `ubuntu-latest` and `windows-latest` and publishes to the
-PowerShell Gallery on `v*` tags (`PSGALLERY_API_KEY` secret).
+CI runs the suites on `ubuntu-latest` and `windows-latest`; `v*` tags build the
+module package and attach it to a GitHub release (no Gallery publishing).
 
 ## License
 

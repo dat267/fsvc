@@ -1,0 +1,42 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate module and run tests
+        shell: pwsh
+        run: |
+          Test-ModuleManifest ./fsvc.psd1 | Out-Null
+          $fail = 0
+          foreach ($t in Get-ChildItem tests/*.Tests.ps1) {
+            pwsh -NonInteractive -File $t.FullName
+            if ($LASTEXITCODE -ne 0) { $fail = 1 }
+          }
+          if ($fail -ne 0) { exit 1 }
+
+      - name: Package the module
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'stage/fsvc'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item fsvc.psd1, fsvc.psm1 -Destination $stage
+          Copy-Item Private, Public -Destination $stage -Recurse
+          Copy-Item LICENSE -Destination $stage
+          Compress-Archive -Path $stage -DestinationPath (Join-Path $env:RUNNER_TEMP 'fsvc.zip') -Force
+
+      - name: Publish the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/fsvc.zip
+          generate_release_notes: true
