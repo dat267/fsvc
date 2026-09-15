@@ -22,17 +22,14 @@ function Update-FSvcPlannedEndDates {
         [string]$QueryHash,
         [int]$BusinessDays = 3,
         [ValidateRange(0, 23)][int]$TargetHour = 17,
-        [string]$TimeZoneId,
         [string]$UtcOffset,
         [int]$PerPage = 100,
         [string]$LogPath
     )
     $cfg = Get-FSvcEffectiveConfig
-    $tz = if ($PSBoundParameters.ContainsKey('TimeZoneId')) { $TimeZoneId } else { $cfg.TimeZoneId }
     $off = if ($PSBoundParameters.ContainsKey('UtcOffset')) { $UtcOffset } else { $cfg.UtcOffset }
     $effectiveLog = if ($PSBoundParameters.ContainsKey('LogPath')) { $LogPath } else { $cfg.LogPath }
 
-    $zone = Resolve-FSvcTimeZone -Id $tz
     $offset = ConvertTo-FSvcUtcOffset -Value $off
 
     $tickets = @(if ($QueryHash) {
@@ -48,7 +45,7 @@ function Update-FSvcPlannedEndDates {
         $latest = Get-FSvcLatestConversation -TicketId $t.id -Config $cfg
         $latestAt = if ($null -ne $latest) { $latest.At } else { $null }
         $target = Get-FSvcPlannedEndDate -Ticket $t -LatestConversationAt $latestAt -Now $now `
-            -BusinessDays $BusinessDays -TargetHour $TargetHour -Zone $zone -Offset $offset
+            -BusinessDays $BusinessDays -TargetHour $TargetHour -Offset $offset
         if ($null -eq $target) { continue }
         $changes += [pscustomobject]@{
             Id    = $t.id

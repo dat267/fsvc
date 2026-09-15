@@ -73,14 +73,6 @@ function Get-FSvcBusinessDaysBetween {
     return $full - $fracFrom + $fracTo
 }
 
-# Resolves a Windows or IANA timezone id to a TimeZoneInfo. $null when empty.
-function Resolve-FSvcTimeZone {
-    param([string]$Id)
-    if (-not $Id) { return $null }
-    try { return [System.TimeZoneInfo]::FindSystemTimeZoneById($Id) }
-    catch { throw ("Unknown TimeZoneId '{0}'. Use a Windows id (e.g. 'Arabian Standard Time') or IANA id (e.g. 'Asia/Dubai')." -f $Id) }
-}
-
 # Parses a "+04:00" style UTC offset. $null when empty.
 function ConvertTo-FSvcUtcOffset {
     param([string]$Value)
@@ -89,10 +81,10 @@ function ConvertTo-FSvcUtcOffset {
     catch { throw ("Invalid UtcOffset '{0}'. Use a value like '+04:00'." -f $Value) }
 }
 
-# Converts an instant to the target timezone (by id) or fixed UTC offset.
+# Converts an instant to the configured fixed UTC offset, or leaves it in its
+# own offset when $Offset is null (inherit the account offset).
 function ConvertTo-FSvcTargetZone {
-    param([datetimeoffset]$Value, [AllowNull()]$Zone, [AllowNull()]$Offset)
-    if ($null -ne $Zone) { return [System.TimeZoneInfo]::ConvertTime($Value, $Zone) }
+    param([datetimeoffset]$Value, [AllowNull()]$Offset)
     if ($null -ne $Offset) { return $Value.ToOffset([timespan]$Offset) }
     return $Value
 }
@@ -105,17 +97,16 @@ function Get-FSvcTargetEndDate {
         [datetimeoffset]$Base,
         [int]$Days,
         [int]$Hour,
-        [AllowNull()]$Zone,
         [AllowNull()]$Offset,
         [AllowNull()]$Now
     )
-    $b = ConvertTo-FSvcTargetZone -Value $Base -Zone $Zone -Offset $Offset
+    $b = ConvertTo-FSvcTargetZone -Value $Base -Offset $Offset
     $t = Add-FSvcBusinessDays -Start $b -Days $Days
     $t = [datetimeoffset]::new($t.Year, $t.Month, $t.Day, $Hour, 0, 0, $t.Offset)
     $t = Round-FSvcQuarterHour $t
 
     if ($null -ne $Now) {
-        $n = ConvertTo-FSvcTargetZone -Value $Now -Zone $Zone -Offset $Offset
+        $n = ConvertTo-FSvcTargetZone -Value $Now -Offset $Offset
         if ($t -le $n) {
             $slot = [datetimeoffset]::new($n.Year, $n.Month, $n.Day, $Hour, 0, 0, $n.Offset)
             if ($slot -le $n) { $slot = Add-FSvcBusinessDays -Start $slot -Days 1 }

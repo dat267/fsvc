@@ -11,7 +11,6 @@ $script:FSvcEnvNames = @{
     SessionCookie = 'FSVC_ITILDESK_SESSION'
     CsrfToken     = 'FSVC_CSRF_TOKEN'
     BaseUrl       = 'FSVC_BASE_URL'
-    TimeZoneId    = 'FSVC_TZ'
     UtcOffset     = 'FSVC_UTC_OFFSET'
     LogPath       = 'FSVC_LOG_PATH'
 }

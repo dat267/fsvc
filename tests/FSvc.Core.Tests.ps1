@@ -43,12 +43,12 @@ $nextMon = [datetimeoffset]::Parse("2026-08-10T12:00:00+00:00")
 Assert-Equal ([math]::Round((Get-FSvcBusinessDaysBetween -From $mon -To $nextMon), 4)) 5 "business days Mon->Mon = 5"
 Assert-Equal ([math]::Round((Get-FSvcBusinessDaysBetween -From $mon -To $mon), 4)) 0 "same instant = 0"
 
-Assert-Equal (Format-Iso8601 (Get-FSvcTargetEndDate -Base ([datetimeoffset]::Parse("2026-08-04T12:07:30+00:00")) -Days 3 -Hour 17 -Zone $null -Offset ([timespan]::Zero))) "2026-08-07T17:00:00Z" "target = base +3bd at hour"
+Assert-Equal (Format-Iso8601 (Get-FSvcTargetEndDate -Base ([datetimeoffset]::Parse("2026-08-04T12:07:30+00:00")) -Days 3 -Hour 17 -Offset ([timespan]::Zero))) "2026-08-07T17:00:00Z" "target = base +3bd at hour"
 $now = [datetimeoffset]::Parse("2026-08-04T12:00:00+00:00")
 $old = [datetimeoffset]::Parse("2026-07-01T09:00:00+00:00")
-Assert-Equal (Format-Iso8601 (Get-FSvcTargetEndDate -Base $old -Days 3 -Hour 17 -Zone $null -Offset ([timespan]::Zero) -Now $now)) "2026-08-04T17:00:00Z" "stale target clamped to today"
+Assert-Equal (Format-Iso8601 (Get-FSvcTargetEndDate -Base $old -Days 3 -Hour 17 -Offset ([timespan]::Zero) -Now $now)) "2026-08-04T17:00:00Z" "stale target clamped to today"
 $evening = [datetimeoffset]::Parse("2026-08-04T18:00:00+00:00")
-Assert-Equal (Format-Iso8601 (Get-FSvcTargetEndDate -Base $old -Days 3 -Hour 17 -Zone $null -Offset ([timespan]::Zero) -Now $evening)) "2026-08-05T17:00:00Z" "past hour clamps to next business day"
+Assert-Equal (Format-Iso8601 (Get-FSvcTargetEndDate -Base $old -Days 3 -Hour 17 -Offset ([timespan]::Zero) -Now $evening)) "2026-08-05T17:00:00Z" "past hour clamps to next business day"
 
 $target = [datetimeoffset]::Parse("2026-08-07T17:00:00+04:00")
 Assert-Equal (Test-FSvcEndDateNeedsUpdate -PlannedEndDate $null -Target $target) $true "null needs update"
@@ -60,7 +60,6 @@ Assert-Equal (Test-FSvcFillStart -PlannedStartDate "2026-08-01T00:00:00Z" -Creat
 Write-Host "== Timezone config ==" -ForegroundColor Cyan
 Assert-Equal (ConvertTo-FSvcUtcOffset -Value "+04:00").ToString() "04:00:00" "offset parsed"
 Assert-Equal (ConvertTo-FSvcUtcOffset -Value "") $null "empty offset is null"
-Assert-True ($null -ne (Resolve-FSvcTimeZone -Id "UTC")) "UTC resolves"
 
 Write-Host "== Category ==" -ForegroundColor Cyan
 $cnow = [datetimeoffset]::Parse("2026-08-04T12:00:00+00:00")
@@ -94,23 +93,23 @@ $zero = [timespan]::Zero
 $before = [datetimeoffset]::Parse("2026-09-01T00:00:00+00:00")
 $mon = [pscustomobject]@{ created_at = "2026-09-07T10:00:00+00:00"; planned_end_date = $null }   # Monday
 # base = created_at; Mon +3bd = Thu 17:00
-Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $mon -LatestConversationAt $null -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero)) "2026-09-10T17:00:00Z" "no comment uses created_at"
+Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $mon -LatestConversationAt $null -Now $before -BusinessDays 3 -TargetHour 17 -Offset $zero)) "2026-09-10T17:00:00Z" "no comment uses created_at"
 # base = last comment; Tue 2026-09-08 +3bd = Fri 17:00
 $comment = [datetimeoffset]::Parse("2026-09-08T09:00:00+00:00")
-Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $mon -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero)) "2026-09-11T17:00:00Z" "comment drives the base"
+Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $mon -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Offset $zero)) "2026-09-11T17:00:00Z" "comment drives the base"
 # already exactly the target instant -> no change
 $same = [pscustomobject]@{ created_at = "2026-09-01T10:00:00+00:00"; planned_end_date = "2026-09-11T17:00:00+00:00" }
-Assert-Equal (Get-FSvcPlannedEndDate -Ticket $same -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero) $null "identical date is skipped"
+Assert-Equal (Get-FSvcPlannedEndDate -Ticket $same -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Offset $zero) $null "identical date is skipped"
 # a far-future date differs -> corrected
 $far = [pscustomobject]@{ created_at = "2026-09-01T10:00:00+00:00"; planned_end_date = "2099-01-01T00:00:00Z" }
-Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $far -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero)) "2026-09-11T17:00:00Z" "far-future date is corrected"
+Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $far -LatestConversationAt $comment -Now $before -BusinessDays 3 -TargetHour 17 -Offset $zero)) "2026-09-11T17:00:00Z" "far-future date is corrected"
 # stale base clamps into the future relative to now
 $stale = [pscustomobject]@{ created_at = "2026-08-01T10:00:00+00:00"; planned_end_date = $null }
 $nowTue = [datetimeoffset]::Parse("2026-09-08T12:00:00+00:00")
-Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $stale -LatestConversationAt $null -Now $nowTue -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero)) "2026-09-08T17:00:00Z" "stale target clamps to today at hour"
+Assert-Equal (Format-Iso8601 (Get-FSvcPlannedEndDate -Ticket $stale -LatestConversationAt $null -Now $nowTue -BusinessDays 3 -TargetHour 17 -Offset $zero)) "2026-09-08T17:00:00Z" "stale target clamps to today at hour"
 # no dates at all -> no target
 $empty = [pscustomobject]@{ created_at = $null; planned_end_date = $null }
-Assert-Equal (Get-FSvcPlannedEndDate -Ticket $empty -LatestConversationAt $null -Now $before -BusinessDays 3 -TargetHour 17 -Zone $null -Offset $zero) $null "no base date yields no target"
+Assert-Equal (Get-FSvcPlannedEndDate -Ticket $empty -LatestConversationAt $null -Now $before -BusinessDays 3 -TargetHour 17 -Offset $zero) $null "no base date yields no target"
 
 Write-Host "== ConvertTo-FSvcConversationView ==" -ForegroundColor Cyan
 $raw1 = [pscustomobject]@{ id = 1; user_id = 2100; user = [pscustomobject]@{ name = "Nadia" }; incoming = $true; created_at = "2026-08-01T10:30:00+04:00"; body_text = "hello"; body = "<p>hello</p>" }

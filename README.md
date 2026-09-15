@@ -87,7 +87,6 @@ process running as you; clear them when they expire.
 | `SessionCookie` | `FSVC_ITILDESK_SESSION` | `_itildesk_session` value |
 | `CsrfToken` | `FSVC_CSRF_TOKEN` | required for writes |
 | `BaseUrl` | `FSVC_BASE_URL` | override the API base URL |
-| `TimeZoneId` | `FSVC_TZ` | Windows/IANA id for planned end dates |
 | `UtcOffset` | `FSVC_UTC_OFFSET` | e.g. `+04:00`; `""` keeps the ticket's offset |
 | `LogPath` | `FSVC_LOG_PATH` | transcript file for write commands |
 
@@ -132,7 +131,7 @@ named `SelfAssigned`/`Unassigned` views unless you override its query hashes.
 
 - `Update-FSvcPlannedEndDates` recomputes every scanned ticket to its **last
   comment + N business days** (private note or public reply, falling back to
-  `created_at`) at `-TargetHour` in `-TimeZoneId`/`-UtcOffset`. A date that would
+  `created_at`) at `-TargetHour` in `-UtcOffset`. A date that would
   be in the past is clamped to the nearest future business slot, so the planned
   end is always in the future; identical dates are skipped.
 - Times are handled as absolute instants and rendered in the account/target
