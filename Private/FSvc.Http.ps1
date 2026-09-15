@@ -26,33 +26,60 @@ function ConvertFrom-FSvcJson {
     return $Json | ConvertFrom-Json
 }
 
-function Invoke-FSvcGet {
-    param([string]$Path, [hashtable]$Query, [hashtable]$Config)
+# Transport seam: tests (or an advanced caller) can replace the HTTP transport
+# with a scriptblock that receives @{ Method; Path; Query; Body; Config } and
+# returns the raw response body. $null means the real Invoke-WebRequest.
+if (-not (Get-Variable -Name FSvcTransport -Scope Script -ErrorAction SilentlyContinue)) {
+    $script:FSvcTransport = $null
+}
+
+# Single entry point for API calls. Resolves config, asserts the connection,
+# and either calls the injected transport or performs the real HTTP request.
+function Invoke-FSvcRequest {
+    param(
+        [string]$Method,
+        [string]$Path,
+        [hashtable]$Query,
+        [hashtable]$Body,
+        [hashtable]$Config
+    )
     if (-not $Config) { $Config = Get-FSvcEffectiveConfig }
     Assert-FSvcConnection -Config $Config
+
+    $transport = Get-Variable -Name FSvcTransport -Scope Script -ErrorAction SilentlyContinue
+    if ($transport -and $null -ne $transport.Value) {
+        return & $transport.Value @{ Method = $Method; Path = $Path; Query = $Query; Body = $Body; Config = $Config }
+    }
+
     $url = Add-FSvcQuery -Path $Path -QueryString (Build-FSvcQueryString -Query $Query)
     $headers = @{
         "Accept" = "application/json"
         "Cookie" = "_itildesk_session=$($Config.SessionCookie)"
     }
-    $resp = Invoke-WebRequest -Uri ("{0}/api/_/{1}" -f $Config.BaseUrl.TrimEnd('/'), $url) -Headers $headers -UseBasicParsing
+    $params = @{
+        Uri             = ("{0}/api/_/{1}" -f $Config.BaseUrl.TrimEnd('/'), $url)
+        Headers         = $headers
+        Method          = $Method
+        UseBasicParsing = $true
+    }
+    if ($Method -ne 'GET') {
+        if (-not $Config.CsrfToken) {
+            throw "No CSRF token configured. Run Set-FSvcConfig -CsrfToken <value>, or set FSVC_CSRF_TOKEN."
+        }
+        $headers['Content-Type'] = 'application/json; charset=utf-8'
+        $headers['X-CSRF-Token'] = $Config.CsrfToken
+        $params['Body'] = ($Body | ConvertTo-Json -Compress)
+    }
+    $resp = Invoke-WebRequest @params
     return $resp.Content
+}
+
+function Invoke-FSvcGet {
+    param([string]$Path, [hashtable]$Query, [hashtable]$Config)
+    return Invoke-FSvcRequest -Method GET -Path $Path -Query $Query -Config $Config
 }
 
 function Invoke-FSvcPut {
     param([string]$Path, [hashtable]$Body, [hashtable]$Config)
-    if (-not $Config) { $Config = Get-FSvcEffectiveConfig }
-    Assert-FSvcConnection -Config $Config
-    if (-not $Config.CsrfToken) {
-        throw "No CSRF token configured. Run Set-FSvcConfig -CsrfToken <value>, or set FSVC_CSRF_TOKEN."
-    }
-    $headers = @{
-        "Accept"       = "application/json"
-        "Cookie"       = "_itildesk_session=$($Config.SessionCookie)"
-        "Content-Type" = "application/json; charset=utf-8"
-        "X-CSRF-Token" = $Config.CsrfToken
-    }
-    $json = $Body | ConvertTo-Json -Compress
-    $resp = Invoke-WebRequest -Uri ("{0}/api/_/{1}" -f $Config.BaseUrl.TrimEnd('/'), $Path) -Method Put -Headers $headers -Body $json -UseBasicParsing
-    return $resp.Content
+    return Invoke-FSvcRequest -Method PUT -Path $Path -Body $Body -Config $Config
 }
