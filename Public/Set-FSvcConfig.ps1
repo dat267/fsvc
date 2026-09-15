@@ -3,11 +3,11 @@ function Set-FSvcConfig {
     .SYNOPSIS
         Stores Freshservice connection settings for this session and persists them for future sessions.
     .DESCRIPTION
-        Settings are kept for the current session and also written to a managed
-        block in your PowerShell profile, which sets the FSVC_* environment
-        variables when the profile loads - so a new session picks them up without
-        calling this again. In-session values take precedence over the persisted
-        environment variables. Passing an empty value clears that setting.
+        Settings are kept for the current session and saved to a small JSON file
+        (%LOCALAPPDATA%\fsvc\config.json on Windows, ~/.config/fsvc/config.json
+        elsewhere), so a new session picks them up without calling this again.
+        In-session values take precedence. Passing an empty value clears the
+        setting from the file.
 
         Note: SessionCookie and CsrfToken are persisted in plaintext, readable by
         any process running as you.
@@ -23,11 +23,11 @@ function Set-FSvcConfig {
         [string]$TimeZoneId,
         [string]$UtcOffset,
         [string]$LogPath,
-        [string]$ProfilePath
+        [string]$ConfigPath
     )
 
-    # Only recognised settings are stored/persisted; -ProfilePath targets a
-    # specific profile (used by tests and unusual setups).
+    # Only recognised settings are stored/persisted; -ConfigPath targets a
+    # specific file (used by tests and unusual setups).
     $values = @{}
     foreach ($pair in $PSBoundParameters.GetEnumerator()) {
         if ($script:FSvcEnvNames.ContainsKey($pair.Key)) {
@@ -42,21 +42,8 @@ function Set-FSvcConfig {
     }
     foreach ($key in $values.Keys) {
         $stored.Value[$key] = $values[$key]
-        $envName = $script:FSvcEnvNames[$key]
-        if ($values[$key]) {
-            Set-Item -Path ("env:" + $envName) -Value $values[$key]
-        } else {
-            Remove-Item -Path ("env:" + $envName) -ErrorAction SilentlyContinue
-        }
     }
 
-    $targetProfile = if ($PSBoundParameters.ContainsKey('ProfilePath') -and $ProfilePath) {
-        $ProfilePath
-    } elseif ($script:FSvcProfilePath) {
-        $script:FSvcProfilePath
-    } else {
-        $PROFILE
-    }
-
-    Set-FSvcPersistentSettings -Settings $values -ProfilePath $targetProfile
+    $targetPath = if ($PSBoundParameters.ContainsKey('ConfigPath') -and $ConfigPath) { $ConfigPath } else { $null }
+    Write-FSvcConfigFile -Settings $values -Path $targetPath
 }

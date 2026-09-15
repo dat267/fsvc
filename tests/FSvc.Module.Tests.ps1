@@ -29,17 +29,17 @@ foreach ($fn in $expected) { Assert-True ($exported -contains $fn) "exports $fn"
 Assert-True (-not ($exported -contains 'Invoke-FSvcGet')) "private helpers are not exported"
 
 Write-Host "== Config round-trip ==" -ForegroundColor Cyan
-$tempProfile = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-module-" + [guid]::NewGuid().ToString() + ".ps1")
-# Keep persistence out of the real profile during tests.
-Set-FSvcConfig -Subdomain acme -SessionCookie secret -CsrfToken tok -ProfilePath $tempProfile
+$tempConfig = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-module-" + [guid]::NewGuid().ToString() + ".json")
+# Keep persistence out of the real config file during tests.
+Set-FSvcConfig -Subdomain acme -SessionCookie secret -CsrfToken tok -ConfigPath $tempConfig
 $cfg = Get-FSvcConfig
 Assert-True ($cfg.Subdomain -eq 'acme') "config stored"
 Assert-True ($cfg.SessionCookie -eq '<set>') "session is masked in output"
 Assert-True ($cfg.BaseUrl -eq 'https://acme.freshservice.com') "base url derived"
-$persisted = & (Get-Module fsvc) { param($p) Read-FSvcProfileSettings -ProfilePath $p } $tempProfile
-Assert-True ($persisted['FSVC_SUBDOMAIN'] -eq 'acme') "setting persisted in the profile"
-Assert-True ($persisted['FSVC_ITILDESK_SESSION'] -eq 'secret') "session cookie persisted in the profile"
-Remove-Item -LiteralPath $tempProfile -Force -ErrorAction SilentlyContinue
+$persisted = Get-Content -LiteralPath $tempConfig -Raw | ConvertFrom-Json
+Assert-True ($persisted.Subdomain -eq 'acme') "setting persisted to the config file"
+Assert-True ($persisted.SessionCookie -eq 'secret') "session cookie persisted to the config file"
+Remove-Item -LiteralPath $tempConfig -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }

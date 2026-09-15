@@ -5,10 +5,6 @@ if (-not (Get-Variable -Name FSvcConfig -Scope Script -ErrorAction SilentlyConti
     $script:FSvcConfig = @{}
 }
 
-# Persistent-target overrides (tests point these at temp paths/stubs).
-if (-not (Get-Variable -Name FSvcProfilePath -Scope Script -ErrorAction SilentlyContinue)) {
-    $script:FSvcProfilePath = $PROFILE
-}
 
 $script:FSvcEnvNames = @{
     Subdomain     = 'FSVC_SUBDOMAIN'
@@ -20,18 +16,21 @@ $script:FSvcEnvNames = @{
     LogPath       = 'FSVC_LOG_PATH'
 }
 
-# Returns the effective config hashtable: per-call override, then module config
-# from Set-FSvcConfig, then environment variable, then $null. BaseUrl is
+# Returns the effective config hashtable: per-call override, then the session
+# value from Set-FSvcConfig, then the persisted config file, then the
+# environment variable, then $null. BaseUrl is
 # derived from Subdomain when not set outright.
 function Get-FSvcEffectiveConfig {
     param([hashtable]$Overrides)
 
     $stored = Get-Variable -Name FSvcConfig -Scope Script -ErrorAction SilentlyContinue
+    $fileCfg = Read-FSvcConfigFile
     $cfg = @{}
     foreach ($key in $script:FSvcEnvNames.Keys) {
         $value = $null
         if ($Overrides -and $Overrides.ContainsKey($key)) { $value = $Overrides[$key] }
         if (-not $value -and $stored -and $stored.Value.ContainsKey($key)) { $value = $stored.Value[$key] }
+        if (-not $value -and $fileCfg.ContainsKey($key)) { $value = $fileCfg[$key] }
         if (-not $value) { $value = [Environment]::GetEnvironmentVariable($script:FSvcEnvNames[$key]) }
         $cfg[$key] = $value
     }

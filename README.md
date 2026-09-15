@@ -61,11 +61,11 @@ consumes the tag's source archive.
 
 ## Configure
 
-`Set-FSvcConfig` stores settings and **persists them for future sessions** in a
-delimited managed block in your PowerShell profile, which sets the `FSVC_*`
-environment variables when the profile loads. Settings are also applied to the
-current process. Because it is profile-sourced, it applies to PowerShell
-sessions that load the profile (a scheduled task should not use `-NoProfile`).
+`Set-FSvcConfig` stores settings for the session and **persists them to a small
+JSON file** for future sessions: `%LOCALAPPDATA%\fsvc\config.json` on Windows,
+`~/.config/fsvc/config.json` elsewhere. The effective value is resolved as
+per-call parameter, then session value, then the config file, then the
+`FSVC_*` environment variable.
 
 Within a session, `Set-FSvcConfig` values take precedence; the `FSVC_*`
 environment variables fill anything not set. Passing an empty value clears a
