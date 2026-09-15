@@ -1,6 +1,6 @@
-# Module configuration. Values set with Set-FSvcConfig are overridable by the
-# matching FSVC_* environment variable, which in turn is overridable by an
-# explicit per-call override.
+# Module configuration. Values set with Set-FSvcConfig take precedence over the
+# matching FSVC_* environment variables, which fill anything not set there; an
+# explicit per-call override beats both.
 if (-not (Get-Variable -Name FSvcConfig -Scope Script -ErrorAction SilentlyContinue)) {
     $script:FSvcConfig = @{}
 }
