@@ -1,6 +1,6 @@
 @{
     RootModule           = 'fsvc.psm1'
-    ModuleVersion        = '0.0.1'
+    ModuleVersion        = '0.0.2'
     GUID                 = 'a2aea9f2-df4e-4762-a982-b6fa9be5b5e4'
     Author               = 'dat267'
     Copyright            = '(c) dat267. All rights reserved.'
@@ -26,7 +26,7 @@
             Tags         = @('Freshservice', 'Helpdesk', 'Tickets', 'API', 'PrivateAPI')
             ProjectUri   = 'https://github.com/dat267/fsvc'
             LicenseUri   = 'https://github.com/dat267/fsvc/blob/main/LICENSE'
-            ReleaseNotes = '0.0.1 - initial module release, ported from the standalone scripts.'
+            ReleaseNotes = '0.0.2 - config persistence moved to the PowerShell profile on all platforms. 0.0.1 - initial module release.'
         }
     }
 }
