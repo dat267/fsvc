@@ -3,6 +3,11 @@
 #   non-Windows  ~/.config/fsvc/config.json
 # Set-FSvcConfig writes it; Get-FSvcEffectiveConfig reads it.
 
+# Older config files used these keys; read them as their current names.
+$script:FSvcLegacyConfigKeys = @{
+    SessionCookie = 'ItildeskSession'
+}
+
 if (-not (Get-Variable -Name FSvcConfigPath -Scope Script -ErrorAction SilentlyContinue)) {
     $script:FSvcConfigPath = $null   # when set (tests, -ConfigPath), overrides the default
 }
@@ -50,9 +55,16 @@ function Read-FSvcConfigFile {
     } catch {
         return $map
     }
+    $names = @($obj.PSObject.Properties.Name)
     foreach ($key in $script:FSvcEnvNames.Keys) {
-        if ($obj.PSObject.Properties.Name -contains $key -and "$($obj.$key)" -ne '') {
+        if ($names -contains $key -and "$($obj.$key)" -ne '') {
             $map[$key] = [string]$obj.$key
+        }
+    }
+    foreach ($legacy in $script:FSvcLegacyConfigKeys.Keys) {
+        $current = $script:FSvcLegacyConfigKeys[$legacy]
+        if (-not $map.ContainsKey($current) -and $names -contains $legacy -and "$($obj.$legacy)" -ne '') {
+            $map[$current] = [string]$obj.$legacy
         }
     }
     return $map

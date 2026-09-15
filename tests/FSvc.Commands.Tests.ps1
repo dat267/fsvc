@@ -35,7 +35,7 @@ function New-StubTransport {
 
 Write-Host "== Transport seam ==" -ForegroundColor Cyan
 New-StubTransport -Handler { param($Request) '{"ok":true}' }
-$body = Invoke-FSvcGet -Path "tickets" -Query @{ per_page = 1 } -Config @{ BaseUrl = 'http://stub'; SessionCookie = 'x' }
+$body = Invoke-FSvcGet -Path "tickets" -Query @{ per_page = 1 } -Config @{ BaseUrl = 'http://stub'; ItildeskSession = 'x' }
 Assert-Equal $body '{"ok":true}' "get returns the transport response"
 Assert-Equal $script:StubCalls.Count 1 "transport called once"
 Assert-Equal $script:StubCalls[0].Method "GET" "method recorded"
@@ -43,7 +43,7 @@ Assert-Equal $script:StubCalls[0].Path "tickets" "path recorded"
 Assert-Equal $script:StubCalls[0].Query.per_page 1 "query recorded"
 
 New-StubTransport -Handler { param($Request) '{"ticket":{}}' }
-$null = Invoke-FSvcPut -Path "tickets/10" -Body @{ priority = 1 } -Config @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
+$null = Invoke-FSvcPut -Path "tickets/10" -Body @{ priority = 1 } -Config @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
 Assert-Equal $script:StubCalls[0].Method "PUT" "put method recorded"
 Assert-Equal $script:StubCalls[0].Body.priority 1 "put body recorded"
 $script:FSvcTransport = $null
@@ -69,7 +69,7 @@ Assert-Equal $done[0].Applied $true "approved change marked applied"
 Assert-True (-not (Test-Path -LiteralPath (Join-Path ([System.IO.Path]::GetTempPath()) ($lockName + '.lock')))) "lock released after run"
 
 Write-Host "== Invoke-FSvcPagedQuery ==" -ForegroundColor Cyan
-$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
 New-StubTransport -Handler {
     param($Request)
     if ($Request.Query.page -eq 1) { '{"tickets":[{"id":1}],"meta":{"has_next":true}}' }
@@ -87,7 +87,7 @@ $capped = @(Invoke-FSvcPagedQuery -Path 'tickets' -ArrayKey 'tickets' -BaseQuery
 Assert-Equal @($script:StubCalls).Count 2 "stops at MaxPages"
 
 Write-Host "== Set-FSvcPlannedStartDates honours ShouldProcess ==" -ForegroundColor Cyan
-$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
 $ticketJson = '{"tickets":[{"id":10,"subject":"T","planned_start_date":null,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}'
 New-StubTransport -Handler { param($Request) if ($Request.Method -eq 'PUT') { '{"ticket":{}}' } else { $ticketJson } }
 $preview = Set-FSvcPlannedStartDates -WhatIf
@@ -114,7 +114,7 @@ Assert-Equal $list[1].id 2 "second page returned"
 $script:FSvcTransport = $null
 
 Write-Host "== Update-FSvcPlannedEndDates policy via command ==" -ForegroundColor Cyan
-$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't'; UtcOffset = '+04:00' }
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't'; UtcOffset = '+04:00' }
 New-StubTransport -Handler {
     param($Request)
     if ($Request.Method -eq 'PUT') { return '{"ticket":{}}' }
@@ -144,7 +144,7 @@ Assert-True ($text -match "3100 \(outgoing") "numeric author, outgoing"
 Assert-True ($text -match "will do") "body fallback rendered"
 
 Write-Host "== Get-FSvcLatestConversation view ==" -ForegroundColor Cyan
-$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
 New-StubTransport -Handler { param($Request) '{"conversations":[{"id":1,"user_id":2100,"user":{"name":"Nadia"},"incoming":true,"created_at":"2026-09-01T10:30:00+04:00","body_text":"x"}],"meta":{"has_next":false}}' }
 $lc = Get-FSvcLatestConversation -TicketId 5 -Config $script:FSvcConfig
 Assert-Equal $lc.Author "Nadia" "latest conversation is a view with author"
@@ -153,7 +153,7 @@ Assert-Equal (Format-Iso8601 $lc.At) "2026-09-01T10:30:00+04:00" "latest convers
 $script:FSvcTransport = $null
 
 Write-Host "== Get-FSvcViewTickets ==" -ForegroundColor Cyan
-$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
 New-StubTransport -Handler { param($Request) '{"tickets":[{"id":1}],"meta":{"has_next":false}}' }
 $null = Get-FSvcViewTickets -View SelfAssigned -Config $script:FSvcConfig
 Assert-True ($script:StubCalls[0].Query.query_hash -match '"responder_id".*"0"') "self-assigned query hash sent"

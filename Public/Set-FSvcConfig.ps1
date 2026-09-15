@@ -9,15 +9,15 @@ function Set-FSvcConfig {
         In-session values take precedence. Passing an empty value clears the
         setting from the file.
 
-        Note: SessionCookie and CsrfToken are persisted in plaintext, readable by
+        Note: ItildeskSession and CsrfToken are persisted in plaintext, readable by
         any process running as you.
     .EXAMPLE
-        Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
+        Set-FSvcConfig -Subdomain acme -ItildeskSession '<cookie>' -CsrfToken '<token>'
     #>
     [CmdletBinding()]
     param(
         [string]$Subdomain,
-        [string]$SessionCookie,
+        [string]$ItildeskSession,
         [string]$CsrfToken,
         [string]$BaseUrl,
         [string]$UtcOffset,

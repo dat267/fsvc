@@ -8,7 +8,7 @@ if (-not (Get-Variable -Name FSvcConfig -Scope Script -ErrorAction SilentlyConti
 
 $script:FSvcEnvNames = @{
     Subdomain     = 'FSVC_SUBDOMAIN'
-    SessionCookie = 'FSVC_ITILDESK_SESSION'
+    ItildeskSession = 'FSVC_ITILDESK_SESSION'
     CsrfToken     = 'FSVC_CSRF_TOKEN'
     BaseUrl       = 'FSVC_BASE_URL'
     UtcOffset     = 'FSVC_UTC_OFFSET'
@@ -46,7 +46,7 @@ function Assert-FSvcConnection {
     if (-not $Config.BaseUrl) {
         throw "No base URL configured. Run Set-FSvcConfig -Subdomain <domain> (or -BaseUrl), or set FSVC_SUBDOMAIN / FSVC_BASE_URL."
     }
-    if (-not $Config.SessionCookie) {
-        throw "No session configured. Run Set-FSvcConfig -SessionCookie <value>, or set FSVC_ITILDESK_SESSION."
+    if (-not $Config.ItildeskSession) {
+        throw "No session configured. Run Set-FSvcConfig -ItildeskSession <value>, or set FSVC_ITILDESK_SESSION."
     }
 }

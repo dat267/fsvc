@@ -9,7 +9,7 @@ function Get-FSvcConfig {
     [pscustomobject]@{
         Subdomain     = $cfg.Subdomain
         BaseUrl       = $cfg.BaseUrl
-        SessionCookie = if ($cfg.SessionCookie) { '<set>' } else { $null }
+        ItildeskSession = if ($cfg.ItildeskSession) { '<set>' } else { $null }
         CsrfToken     = if ($cfg.CsrfToken) { '<set>' } else { $null }
         UtcOffset     = $cfg.UtcOffset
         LogPath       = $cfg.LogPath

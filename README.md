@@ -8,7 +8,7 @@ planned-date hygiene as native commands.
 Install-Module fsvc -Scope CurrentUser
 Import-Module fsvc
 
-Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
+Set-FSvcConfig -Subdomain acme -ItildeskSession '<cookie>' -CsrfToken '<token>'
 
 Get-FSvcTicketOverview | Format-Table Category, Id, Subject, Days
 Get-FSvcTicketContent -Id 10100 | Format-FSvcTicketContent
@@ -72,19 +72,19 @@ environment variables fill anything not set. Passing an empty value clears a
 setting from both the session and the persisted store.
 
 ```powershell
-Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
+Set-FSvcConfig -Subdomain acme -ItildeskSession '<cookie>' -CsrfToken '<token>'
 Get-FSvcConfig   # shows the effective values (secrets masked)
 Test-FSvcSession # verifies the cookie works
-Set-FSvcConfig -SessionCookie ''   # clear a persisted setting
+Set-FSvcConfig -ItildeskSession ''   # clear a persisted setting
 ```
 
-`SessionCookie` and `CsrfToken` are persisted in plaintext, readable by any
+`ItildeskSession` and `CsrfToken` are persisted in plaintext, readable by any
 process running as you; clear them when they expire.
 
 | Setting | Environment variable | Purpose |
 | --- | --- | --- |
 | `Subdomain` | `FSVC_SUBDOMAIN` | e.g. `acme` |
-| `SessionCookie` | `FSVC_ITILDESK_SESSION` | `_itildesk_session` value |
+| `ItildeskSession` | `FSVC_ITILDESK_SESSION` | `_itildesk_session` value |
 | `CsrfToken` | `FSVC_CSRF_TOKEN` | required for writes |
 | `BaseUrl` | `FSVC_BASE_URL` | override the API base URL |
 | `UtcOffset` | `FSVC_UTC_OFFSET` | e.g. `+04:00`; `""` keeps the ticket's offset |

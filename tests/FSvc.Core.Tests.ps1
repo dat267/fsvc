@@ -144,22 +144,34 @@ Assert-Equal $nixPath ([System.IO.Path]::Combine("/home/me", ".config", "fsvc", 
 
 Write-Host "== Config file read/write ==" -ForegroundColor Cyan
 $cfgFile = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-cfg-" + [guid]::NewGuid().ToString() + ".json")
-Write-FSvcConfigFile -Settings @{ Subdomain = 'acme'; SessionCookie = 'cookie'; CsrfToken = 'tok' } -Path $cfgFile
+Write-FSvcConfigFile -Settings @{ Subdomain = 'acme'; ItildeskSession = 'cookie'; CsrfToken = 'tok' } -Path $cfgFile
 Assert-True (Test-Path -LiteralPath $cfgFile) "config file written"
 $readCfg = Read-FSvcConfigFile -Path $cfgFile
 Assert-Equal $readCfg['Subdomain'] 'acme' "subdomain round-trips"
-Assert-Equal $readCfg['SessionCookie'] 'cookie' "session cookie round-trips"
+Assert-Equal $readCfg['ItildeskSession'] 'cookie' "session cookie round-trips"
 Assert-Equal $readCfg['CsrfToken'] 'tok' "csrf token round-trips"
 Write-FSvcConfigFile -Settings @{ UtcOffset = '+04:00' } -Path $cfgFile
 $mergedCfg = Read-FSvcConfigFile -Path $cfgFile
 Assert-Equal $mergedCfg['Subdomain'] 'acme' "merge keeps existing keys"
 Assert-Equal $mergedCfg['UtcOffset'] '+04:00' "merge adds the new key"
-Write-FSvcConfigFile -Settings @{ SessionCookie = '' } -Path $cfgFile
-Assert-True (-not (Read-FSvcConfigFile -Path $cfgFile).ContainsKey('SessionCookie')) "empty clears a key"
+Write-FSvcConfigFile -Settings @{ ItildeskSession = '' } -Path $cfgFile
+Assert-True (-not (Read-FSvcConfigFile -Path $cfgFile).ContainsKey('ItildeskSession')) "empty clears a key"
 Assert-True ((Get-Content -LiteralPath $cfgFile -Raw) -notmatch 'cookie-value') "cleared value is gone from disk"
 Write-FSvcConfigFile -Settings @{ Subdomain = ''; CsrfToken = ''; UtcOffset = '' } -Path $cfgFile
 Assert-True (-not (Test-Path -LiteralPath $cfgFile)) "file removed once every setting is cleared"
 Remove-Item -LiteralPath $cfgFile -Force -ErrorAction SilentlyContinue
+
+Write-Host "== Legacy config key ==" -ForegroundColor Cyan
+$legacyFile = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-legacy-" + [guid]::NewGuid().ToString() + ".json")
+'{"SessionCookie":"legacy-value","Subdomain":"acme"}' | Set-Content -LiteralPath $legacyFile -Encoding UTF8
+$legacyRead = Read-FSvcConfigFile -Path $legacyFile
+Assert-Equal $legacyRead['ItildeskSession'] 'legacy-value' "old SessionCookie key read as ItildeskSession"
+Assert-Equal $legacyRead['Subdomain'] 'acme' "other keys still read"
+Write-FSvcConfigFile -Settings @{ UtcOffset = '+04:00' } -Path $legacyFile
+$migrated = Get-Content -LiteralPath $legacyFile -Raw | ConvertFrom-Json
+Assert-True ($migrated.PSObject.Properties.Name -contains 'ItildeskSession') "rewrite uses the new key"
+Assert-True (-not ($migrated.PSObject.Properties.Name -contains 'SessionCookie')) "old key dropped on rewrite"
+Remove-Item -LiteralPath $legacyFile -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }

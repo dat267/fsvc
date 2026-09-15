@@ -31,14 +31,14 @@ Assert-True (-not ($exported -contains 'Invoke-FSvcGet')) "private helpers are n
 Write-Host "== Config round-trip ==" -ForegroundColor Cyan
 $tempConfig = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-module-" + [guid]::NewGuid().ToString() + ".json")
 # Keep persistence out of the real config file during tests.
-Set-FSvcConfig -Subdomain acme -SessionCookie secret -CsrfToken tok -ConfigPath $tempConfig
+Set-FSvcConfig -Subdomain acme -ItildeskSession secret -CsrfToken tok -ConfigPath $tempConfig
 $cfg = Get-FSvcConfig
 Assert-True ($cfg.Subdomain -eq 'acme') "config stored"
-Assert-True ($cfg.SessionCookie -eq '<set>') "session is masked in output"
+Assert-True ($cfg.ItildeskSession -eq '<set>') "session is masked in output"
 Assert-True ($cfg.BaseUrl -eq 'https://acme.freshservice.com') "base url derived"
 $persisted = Get-Content -LiteralPath $tempConfig -Raw | ConvertFrom-Json
 Assert-True ($persisted.Subdomain -eq 'acme') "setting persisted to the config file"
-Assert-True ($persisted.SessionCookie -eq 'secret') "session cookie persisted to the config file"
+Assert-True ($persisted.ItildeskSession -eq 'secret') "session cookie persisted to the config file"
 Remove-Item -LiteralPath $tempConfig -Force -ErrorAction SilentlyContinue
 
 Write-Host "== No-op guard ==" -ForegroundColor Cyan

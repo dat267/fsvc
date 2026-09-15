@@ -54,7 +54,7 @@ function Invoke-FSvcRequest {
     $url = Add-FSvcQuery -Path $Path -QueryString (Build-FSvcQueryString -Query $Query)
     $headers = @{
         "Accept" = "application/json"
-        "Cookie" = "_itildesk_session=$($Config.SessionCookie)"
+        "Cookie" = "_itildesk_session=$($Config.ItildeskSession)"
     }
     $params = @{
         Uri             = ("{0}/api/_/{1}" -f $Config.BaseUrl.TrimEnd('/'), $url)
