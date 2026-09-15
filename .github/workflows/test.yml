@@ -1,4 +1,4 @@
-name: scripts
+name: test
 
 on:
   push:
@@ -14,14 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run standalone script tests
+      - name: Validate module manifest
+        shell: pwsh
+        run: Test-ModuleManifest ./fsvc.psd1 | Out-Null
+
+      - name: Run tests
         shell: pwsh
         run: |
           $fail = 0
-          foreach ($t in Get-ChildItem scripts/*.Tests.ps1) {
+          foreach ($t in Get-ChildItem tests/*.Tests.ps1) {
             Write-Host "== $($t.Name) =="
             pwsh -NonInteractive -File $t.FullName
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
           if ($fail -ne 0) { exit 1 }
-          Write-Host "All script suites passed."
+          Write-Host "All suites passed."

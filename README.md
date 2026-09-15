@@ -1,159 +1,126 @@
 # fsvc
 
-PowerShell toolkit for the Freshservice **private API** (`/api/_/`), authenticated
-with your browser session cookie. Each script is standalone: copy one file, edit
-the CONFIG block (or set shared `FSVC_*` environment variables), and run. No
-modules to install, no external dependencies.
+PowerShell module for the Freshservice **private API** (`/api/_/`), authenticated
+with your browser session cookie. It provides ticket triage, ticket content, and
+planned-date hygiene as native commands.
 
-> The original Go implementation is preserved on the **`archive/go-cli`** branch.
+```powershell
+Install-Module fsvc -Scope CurrentUser
+Import-Module fsvc
 
-## Requirements
+Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
 
-- Windows PowerShell 5.1+ or PowerShell 7+ (`pwsh`)
-- A `_itildesk_session` cookie value from your browser (DevTools → Application →
-  Cookies → your Freshservice domain)
-- An `X-CSRF-Token` from DevTools → Network → any write request, for scripts that
-  update tickets
+Get-FSvcTicketOverview | Format-Table Category, Id, Subject, Days
+Get-FSvcTicketContent -Id 10100 | Format-FSvcTicketContent
+Update-FSvcPlannedEndDates -WhatIf
+```
 
-The private API is undocumented and reverse-engineered; it can change without
-warning. See [`docs/private-api-notes.md`](docs/private-api-notes.md) for the
-accumulated knowledge.
+> The previous implementations are archived: the Go CLI on `archive/go-cli`, the
+> standalone scripts and installer on `archive/standalone-scripts`.
 
 ## Install
 
-Installs to `~/fsvc` (Windows: `%USERPROFILE%\fsvc`) — no clone, no
-parameters:
-
 ```powershell
-irm https://raw.githubusercontent.com/dat267/fsvc/main/scripts/Install.ps1 | iex
+# PowerShell 7.4+ / 5.1 with PowerShellGet
+Install-Module fsvc -Scope CurrentUser
+
+# or with PSResourceGet
+Install-PSResource fsvc -Scope CurrentUser
 ```
 
-Shared configuration comes from the `FSVC_*` environment variables below. From a
-clone, run `pwsh scripts/Install.ps1` instead — it does the same.
-
-Optional, only if you want them:
+From a clone (no publish needed):
 
 ```powershell
-pwsh scripts/Install.ps1 -AddToPath -Subdomain acme   # prepend PATH, save shared config
-pwsh scripts/Install.ps1 -Force                       # refresh an existing install
-pwsh scripts/Install.ps1 -Uninstall                   # remove the folder and config block
+Import-Module ./fsvc.psd1
 ```
 
-- `-AddToPath` and the config parameters write a managed block to your
-  PowerShell profile (delimited by markers, replaced on each run, never
-  duplicated). Without them, nothing touches your profile.
-- If there is no local `scripts/` folder the installer downloads from the repo;
-  `-RemoteBaseUrl` overrides the source (branch, mirror, test server). In that
-  mode it never calls `exit`, so it will not close your shell.
+## Configure
 
-## Quick start
-
-Configure once per session with environment variables, or edit the CONFIG block
-at the top of each script.
+Settings live for the session; a non-empty `FSVC_*` environment variable
+overrides them, so a shared environment configuration works without re-running
+`Set-FSvcConfig`.
 
 ```powershell
-$env:FSVC_SUBDOMAIN        = "acme"
-$env:FSVC_ITILDESK_SESSION = "<your _itildesk_session value>"
-$env:FSVC_CSRF_TOKEN       = "<your X-CSRF-Token value>"   # write scripts only
-
-# Triage overview: unassigned + waiting on customer + awaiting agent
-pwsh scripts/Get-TicketOverview.ps1
-
-# One ticket with its conversation trace (default prints; -AsObject pipes)
-pwsh scripts/Get-TicketContent.ps1 -Id 10100
-./scripts/Get-TicketContent.ps1 -Id 10100 -AsObject | ConvertTo-Json -Depth 10
-
-# List tickets by saved filter id or raw query_hash
-pwsh scripts/Get-TicketList.ps1
-
-# Bulk date hygiene
-pwsh scripts/Fill-PlannedStartDates.ps1
-pwsh scripts/Update-PlannedEndDates.ps1
+Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
+Get-FSvcConfig   # shows the effective values (secrets masked)
+Test-FSvcSession # verifies the cookie works
 ```
 
-Everything is a preview first: write scripts print the planned changes and ask
-before applying (unless auto-confirmed).
-
-## Scripts
-
-| Script | Purpose | Key knobs |
+| Setting | Environment variable | Purpose |
 | --- | --- | --- |
-| `Install.ps1` | Install/copy the scripts, optionally add to `PATH` and persist shared config; `-Uninstall` removes both | `-Destination`, `-AddToPath`, `-Force`, `-Uninstall`, `-ProfilePath` |
-| `Get-TicketList.ps1` | List tickets by saved-filter ID or raw `query_hash`, rendered as a table | `$FilterId` / `$QueryHash` (exactly one), `$Properties`, `$PerPage` |
-| `Get-TicketContent.ps1` | Show one ticket and its full conversation trace; `-AsObject` emits `{ Ticket, Conversations }` for piping | `-Id`, `-AsObject` |
-| `Get-TicketOverview.ps1` | Three-list triage: unassigned (customizable conditions), waiting on customer > N business days, awaiting agent | `$UnassignedQueryHash`, `$AssignedQueryHash`, `$OlderThanDays` |
-| `Fill-PlannedStartDates.ps1` | Fill a null `planned_start_date` from `created_at`, rounded up to the quarter hour | `$Filter`, `$Confirm`, `$NonInteractive`, `$LogPath` |
-| `Update-PlannedEndDates.ps1` | Set `planned_end_date` to the last comment + N business days, at a chosen hour and timezone; always future | `$BusinessDays`, `$TargetHour`, `$TimeZoneId`/`$UtcOffset`, `$NonInteractive`, `$LogPath` |
+| `Subdomain` | `FSVC_SUBDOMAIN` | e.g. `acme` |
+| `SessionCookie` | `FSVC_ITILDESK_SESSION` | `_itildesk_session` value |
+| `CsrfToken` | `FSVC_CSRF_TOKEN` | required for writes |
+| `BaseUrl` | `FSVC_BASE_URL` | override the API base URL |
+| `TimeZoneId` | `FSVC_TZ` | Windows/IANA id for planned end dates |
+| `UtcOffset` | `FSVC_UTC_OFFSET` | e.g. `+04:00`; `""` keeps the ticket's offset |
+| `LogPath` | `FSVC_LOG_PATH` | transcript file for write commands |
 
-Each write script defaults to the self-assigned unresolved tickets
-(`status` unresolved + `responder_id = 0`); replace `$Filter` with your
-instance's query hash if your conventions differ.
+The private API is undocumented and reverse-engineered; see
+[`docs/private-api-notes.md`](docs/private-api-notes.md).
 
-## Shared environment variables (optional)
+## Commands
 
-A non-empty environment variable overrides the value embedded in any script, so
-one configuration drives all of them. The names match the Go CLI's where they
-existed.
+All commands output objects, so use the normal PowerShell pipeline
+(`Format-Table`, `Where-Object`, `ConvertTo-Json`, `Export-Csv`, ...).
 
-| Variable | Overrides | Notes |
-| --- | --- | --- |
-| `FSVC_SUBDOMAIN` | `$Subdomain` | e.g. `acme` |
-| `FSVC_ITILDESK_SESSION` | `$SessionCookie` | expires; refresh when calls start failing |
-| `FSVC_CSRF_TOKEN` | `$CsrfToken` | write scripts only |
-| `FSVC_BASE_URL` | `$BaseUrl` | default `https://<subdomain>.freshservice.com`; useful for a mock |
-| `FSVC_LOG_PATH` | `$LogPath` | appended transcript for unattended runs |
-| `FSVC_TZ` | `$TimeZoneId` | Windows or IANA id, e.g. `Arabian Standard Time` / `Asia/Dubai` |
-| `FSVC_UTC_OFFSET` | `$UtcOffset` | e.g. `+04:00`; `""` keeps each ticket's own offset |
+| Command | Purpose |
+| --- | --- |
+| `Get-FSvcTicketList` | Tickets by saved-filter id or raw `query_hash` |
+| `Get-FSvcTicketContent` | One ticket plus its conversation trace |
+| `Format-FSvcTicketContent` | Renders that object as readable text |
+| `Get-FSvcTicketOverview` | Triage: `unassigned`, `waiting`, `awaiting_agent` |
+| `Set-FSvcPlannedStartDates` | Fill null `planned_start_date` from `created_at` |
+| `Update-FSvcPlannedEndDates` | Set `planned_end_date` to last comment + N business days |
 
-## Scheduled tasks
-
-Both write scripts are schedule-ready. Set these in the script, then register:
+Examples:
 
 ```powershell
-$NonInteractive = $true
-$LogPath        = "C:\logs\fsvc.log"
+Get-FSvcTicketList -FilterId 1100 | Format-Table id, subject, status, priority
+Get-FSvcTicketContent -Id 10100 | ConvertTo-Json -Depth 10
+Get-FSvcTicketOverview -OlderThanDays 2 | Where-Object Category -eq 'waiting'
+Set-FSvcPlannedStartDates -WhatIf
+Update-FSvcPlannedEndDates -BusinessDays 3 -TargetHour 17 -UtcOffset '+04:00'
 ```
 
+## Writing dates
+
+The two write commands support `-WhatIf` / `-Confirm` and emit one object per
+change (`Id`, `Field`, `From`, `To`, `Applied`). Runs are serialised with a lock
+file so overlapping calls cannot double-apply, and `-LogPath` records a
+transcript.
+
+- `Update-FSvcPlannedEndDates` recomputes every scanned ticket to its **last
+  comment + N business days** (private note or public reply, falling back to
+  `created_at`) at `-TargetHour` in `-TimeZoneId`/`-UtcOffset`. A date that would
+  be in the past is clamped to the nearest future business slot, so the planned
+  end is always in the future; identical dates are skipped.
+- Times are handled as absolute instants and rendered in the account/target
+  offset, so the host machine's timezone never changes the result.
+
+For unattended use, `-Confirm:$false`:
+
+```powershell
+Update-FSvcPlannedEndDates -Confirm:$false -LogPath C:\logs\fsvc.log
 ```
-powershell.exe -NonInteractive -ExecutionPolicy Bypass -File C:\path\Fill-PlannedStartDates.ps1
-powershell.exe -NonInteractive -ExecutionPolicy Bypass -File C:\path\Update-PlannedEndDates.ps1
-```
-
-- No prompt is shown; changes apply automatically.
-- The task exits **non-zero** when any update fails, so Task Scheduler / monitoring
-  sees the failure instead of a silent success.
-- Runs are serialised with a lock file in the temp directory; a lock older than
-  4 hours (crashed run) is taken over.
-- `$LogPath` records everything; the session cookie and CSRF token still expire
-  and must be refreshed when the task reports failures.
-
-## Dates and timezones
-
-- Freshservice returns timestamps in the **account's UTC offset**, and planned
-  dates are interpreted in the account timezone.
-- `Fill-PlannedStartDates.ps1` writes dates in the offset of each ticket's
-  `created_at`, i.e. the account offset.
-- `Update-PlannedEndDates.ps1` writes in `$TimeZoneId` if set, else
-  `$UtcOffset`; set both to `""` to follow each comment's own offset.
-- Business-day maths (Mon–Fri, no holidays) is computed between absolute
-  instants, so the host machine's timezone does not affect the result.
-- Planned end dates are recomputed on every run and clamped to the nearest
-  future business slot, so a scheduled run can never leave a past date behind.
 
 ## Development
 
-Zero-dependency tests (no Pester required); each suite dot-sources its script
-and exercises the pure helpers plus the scheduled-run hardening.
-
 ```powershell
-Get-ChildItem scripts/*.Tests.ps1 | ForEach-Object { pwsh -NonInteractive -File $_.FullName }
+Import-Module ./fsvc.psd1 -Force
+Get-ChildItem tests/*.Tests.ps1 | ForEach-Object { pwsh -NonInteractive -File $_.FullName }
 ```
 
-CI runs these on `ubuntu-latest` and `windows-latest`.
+Layout:
 
-Standalone is a design constraint: scripts intentionally duplicate their helper
-functions so any single file can be copied and run on its own. Keep the copies
-consistent when changing shared helpers.
+- `fsvc.psd1` / `fsvc.psm1` — manifest and loader (`Private`, then `Public`).
+- `Private/` — helpers: config resolution, HTTP, dates, tickets, run lock/log.
+- `Public/` — the exported commands.
+- `tests/` — zero-dependency suites (dot-source `Private` for unit tests;
+  `FSvc.Module.Tests.ps1` validates the manifest and exports).
+
+CI runs the suites on `ubuntu-latest` and `windows-latest` and publishes to the
+PowerShell Gallery on `v*` tags (`PSGALLERY_API_KEY` secret).
 
 ## License
 

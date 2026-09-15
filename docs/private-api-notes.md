@@ -20,7 +20,7 @@ Referer header):
 - `type` — `default`
 - `workspace_id` is NOT required in `query_hash` (the unresolved view omits it)
 
-`Get-TicketOverview.ps1` makes two targeted queries — **unassigned** unresolved
+`Get-FSvcTicketOverview` makes two targeted queries — **unassigned** unresolved
 tickets (`responder_id = -1`) and **self-assigned** unresolved tickets
 (`responder_id = 0`) — instead of paginating every unresolved ticket. The
 unassigned list is served directly by the query:
@@ -73,7 +73,7 @@ The overview script treats a ticket as unassigned when the response
 - Session cookies (`helpdesk_node_session`, `_itildesk_session`); the server
   rotates `_itildesk_session` via `Set-Cookie` on responses. The Go CLI (on
   the `archive/go-cli` branch) adopted the rotated value after every request;
-  the standalone scripts use the single configured token and do not track
+  the module uses the single configured token and does not track
   rotation.
 - Writes additionally require `X-CSRF-Token`.
 - Response header confirms the private API:
@@ -89,6 +89,6 @@ The overview script treats a ticket as unassigned when the response
 ## Resolved
 
 - Conversations are returned **latest first** by default (user-confirmed). The
-  scripts explicitly request
+  commands explicitly request
   `order_by=created_at&order_type=desc&per_page=1` and read the first item as
   the latest message.
