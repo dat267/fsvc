@@ -49,6 +49,10 @@ Assert-True (@($warnings).Count -ge 1) "warns when no settings are supplied"
 Assert-True (-not (Test-Path -LiteralPath $tempConfig)) "writes no config file when nothing is supplied"
 Remove-Item -LiteralPath $tempConfig -Force -ErrorAction SilentlyContinue
 
+Write-Host "== Format data ==" -ForegroundColor Cyan
+$fmt = Get-FormatData -TypeName 'FSvc.TicketOverviewRow'
+Assert-True ($null -ne $fmt) "module registers the overview format view"
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

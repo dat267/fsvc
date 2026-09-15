@@ -176,6 +176,22 @@ try { $null = Test-FSvcSession } catch { $threw = $true }
 Assert-True $threw "a failing request throws instead of reporting Ok"
 $script:FSvcTransport = $null
 
+Write-Host "== Overview default view ==" -ForegroundColor Cyan
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
+New-StubTransport -Handler {
+    param($Request)
+    if ($Request.Path -like '*/conversations') { '{"conversations":[],"meta":{"has_next":false}}' }
+    else { '{"tickets":[{"id":10,"subject":"T","responder_id":3100,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}' }
+}
+$ov = @(Get-FSvcTicketOverview -OlderThanDays 2)
+Assert-Equal $ov[0].PSObject.TypeNames[0] 'FSvc.TicketOverviewRow' "overview rows carry a type name"
+Update-FormatData -PrependPath (Join-Path $repoRoot 'fsvc.format.ps1xml')
+$rendered = $ov[0] | Out-String
+Assert-True ($rendered -match '(?m)^Link\s*:') "default view shows Link"
+Assert-True ($rendered -notmatch '(?m)^Id\s*:') "default view hides Id"
+Assert-True ($null -ne $ov[0].Id) "Id is still on the object for scripting"
+$script:FSvcTransport = $null
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

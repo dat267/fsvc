@@ -7,6 +7,7 @@
     Description          = 'Freshservice private-API toolkit: ticket triage, ticket content, and planned-date hygiene.'
     PowerShellVersion    = '5.1'
     CompatiblePSEditions = @('Desktop', 'Core')
+    FormatsToProcess     = @('fsvc.format.ps1xml')
     FunctionsToExport    = @(
         'Get-FSvcConfig',
         'Set-FSvcConfig',

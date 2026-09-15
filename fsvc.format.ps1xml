@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <ViewDefinitions>
+    <View>
+      <Name>FSvc.TicketOverviewRow</Name>
+      <ViewSelectedBy>
+        <TypeName>FSvc.TicketOverviewRow</TypeName>
+      </ViewSelectedBy>
+      <ListControl>
+        <ListEntries>
+          <ListEntry>
+            <ListItems>
+              <ListItem><PropertyName>Category</PropertyName></ListItem>
+              <ListItem><PropertyName>Subject</PropertyName></ListItem>
+              <ListItem><PropertyName>Days</PropertyName></ListItem>
+              <ListItem><PropertyName>Link</PropertyName></ListItem>
+            </ListItems>
+          </ListEntry>
+        </ListEntries>
+      </ListControl>
+    </View>
+  </ViewDefinitions>
+</Configuration>

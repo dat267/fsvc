@@ -29,7 +29,8 @@ function Get-FSvcTicketOverview {
         $days = 0.0
         if ($null -ne $created) { $days = Get-FSvcBusinessDaysBetween -From $created -To $now }
         $out += [pscustomobject]@{
-            Category = 'unassigned'
+            PSTypeName = 'FSvc.TicketOverviewRow'
+            Category   = 'unassigned'
             Id       = $t.id
             Subject  = $t.subject
             Days     = [math]::Round($days, 1)
@@ -54,7 +55,8 @@ function Get-FSvcTicketOverview {
         $days = 0.0
         if ($null -ne $ref) { $days = Get-FSvcBusinessDaysBetween -From $ref -To $now }
         $out += [pscustomobject]@{
-            Category = $category
+            PSTypeName = 'FSvc.TicketOverviewRow'
+            Category   = $category
             Id       = $t.id
             Subject  = $t.subject
             Days     = [math]::Round($days, 1)
