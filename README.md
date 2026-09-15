@@ -36,12 +36,19 @@ pwsh Install.ps1 -Ref main -Force
 pwsh Install.ps1 -Uninstall
 ```
 
-After installing:
+After installing, `Import-Module fsvc` is optional: the installer targets a
+folder on `PSModulePath`, so PowerShell auto-loads the module the first time you
+call one of its commands. Importing explicitly is still fine.
 
 ```powershell
-Import-Module fsvc
 Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
+Get-FSvcTicketOverview | Format-Table Category, Id, Subject, Days
 ```
+
+Auto-load notes: after an upgrade (`Install.ps1 -Force`), an already-open session
+keeps the old code until `Import-Module fsvc -Force` or a new session; a custom
+`-Destination` outside `PSModulePath` needs an explicit import; and after
+`-Uninstall`, run `Remove-Module fsvc` or open a new session.
 
 Other ways to get it running:
 
