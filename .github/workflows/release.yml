@@ -25,6 +25,14 @@ jobs:
           }
           if ($fail -ne 0) { exit 1 }
 
+      - name: Check the tag matches ModuleVersion
+        shell: pwsh
+        run: |
+          $version = (Test-ModuleManifest ./fsvc.psd1).Version.ToString()
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match ModuleVersion $version. Bump fsvc.psd1 (and keep the tag in step)."
+          }
+
       - name: Stage the module
         shell: pwsh
         run: |

@@ -15,7 +15,7 @@ Write-Host "== Manifest ==" -ForegroundColor Cyan
 $manifest = Test-ModuleManifest -Path (Join-Path $repoRoot 'fsvc.psd1')
 Assert-True ($null -ne $manifest) "manifest is valid"
 Assert-True ($manifest.Name -eq 'fsvc') "module name is fsvc"
-Assert-True ($manifest.Version -ge [version]'1.0.0') "version is set"
+Assert-True ($manifest.Version -ge [version]'0.0.1') "version is set"
 
 Write-Host "== Import / exports ==" -ForegroundColor Cyan
 Import-Module (Join-Path $repoRoot 'fsvc.psd1') -Force

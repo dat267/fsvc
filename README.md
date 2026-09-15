@@ -162,6 +162,11 @@ CI runs the suites on `ubuntu-latest` and `windows-latest`; `v*` tags run the
 release workflow, which publishes to the PowerShell Gallery and attaches the
 packaged module to the GitHub release.
 
+Versioning: `ModuleVersion` in `fsvc.psd1` starts at `0.0.1` and must equal the
+release tag (the workflow refuses a mismatch). Bump **conservatively** — patch
+(`0.0.2`, `0.0.3`, ...) for fixes and small changes, minor for new capabilities,
+major for breaking changes; do not bump for docs or test-only commits.
+
 ## License
 
 MIT — see [LICENSE](LICENSE)
