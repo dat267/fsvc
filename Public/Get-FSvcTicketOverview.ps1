@@ -7,7 +7,7 @@ function Get-FSvcTicketOverview {
         Where-Object / Group-Object / Format-Table. Rows are grouped in report
         order (unassigned, waiting, awaiting_agent) and, within each group,
         ordered by Days descending (longest-waiting first). Each row exposes the
-        numeric business-day count (Days) plus a humanized InGroup ("13d 14h")
+        numeric business-day count (Days) plus a humanized Elapsed ("13d 14h")
         and the Since timestamp the count is measured from (created_at for
         unassigned rows, the last message otherwise).
     .EXAMPLE
@@ -40,7 +40,7 @@ function Get-FSvcTicketOverview {
             Id         = $t.id
             Subject    = $t.subject
             Days       = $days
-            InGroup    = Format-FSvcDuration -Days $days
+            Elapsed    = Format-FSvcDuration -Days $days
             Since      = $created
             Link       = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
         }
@@ -69,7 +69,7 @@ function Get-FSvcTicketOverview {
             Id         = $t.id
             Subject    = $t.subject
             Days       = $days
-            InGroup    = Format-FSvcDuration -Days $days
+            Elapsed    = Format-FSvcDuration -Days $days
             Since      = $ref
             Link       = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
         }

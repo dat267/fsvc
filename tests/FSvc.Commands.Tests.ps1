@@ -190,10 +190,10 @@ $rendered = $ov[0] | Out-String
 Assert-True ($rendered -match '(?m)^Link\s*:') "default view shows Link"
 Assert-True ($rendered -notmatch '(?m)^Id\s*:') "default view hides Id"
 Assert-True ($null -ne $ov[0].Id) "Id is still on the object for scripting"
-Assert-True ($rendered -match '(?m)^InGroup\s*:') "default view shows InGroup"
+Assert-True ($rendered -match '(?m)^Elapsed\s*:') "default view shows Elapsed"
 Assert-True ($rendered -match '(?m)^Since\s*:') "default view shows the anchor timestamp"
 Assert-True ($rendered -notmatch '(?m)^Days\s*:') "default view hides the raw decimal Days"
-Assert-True ($ov[0].InGroup -match '^\d+d( \d+h)?$') "InGroup is a humanized business duration"
+Assert-True ($ov[0].Elapsed -match '^\d+d( \d+h)?$') "Elapsed is a humanized business duration"
 Assert-True ($null -ne $ov[0].Since) "Since is a timestamp on the object"
 Assert-True ($null -ne $ov[0].Days) "numeric Days is still on the object"
 $script:FSvcTransport = $null
