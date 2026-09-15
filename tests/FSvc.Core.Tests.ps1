@@ -205,9 +205,19 @@ Assert-Equal (Format-FSvcDuration -Days 302.1) '302d 2h' "days + hours"
 Assert-Equal (Format-FSvcDuration -Days 13.6) '13d 14h' "fraction becomes hours"
 Assert-Equal (Format-FSvcDuration -Days 5.5) '5d 12h' "half day"
 Assert-Equal (Format-FSvcDuration -Days 0.5) '12h' "sub-day"
-Assert-Equal (Format-FSvcDuration -Days 0) '0h' "zero"
-Assert-Equal (Format-FSvcDuration -Days 2.99) '3d' "rounding carries into whole days"
-Assert-Equal (Format-FSvcDuration -Days -1) '0h' "negative clamps to zero"
+Assert-Equal (Format-FSvcDuration -Days 0.0208) '30m' "minutes only under an hour"
+Assert-Equal (Format-FSvcDuration -Days 0.0625) '1h 30m' "hours and minutes under a day"
+Assert-Equal (Format-FSvcDuration -Days 0.0139) '20m' "twenty minutes is not zero"
+Assert-Equal (Format-FSvcDuration -Days 0) '0m' "zero"
+Assert-Equal (Format-FSvcDuration -Days 2.99) '2d 23h' "whole days keep hour resolution, no minute noise"
+Assert-Equal (Format-FSvcDuration -Days -1) '0m' "negative clamps to zero"
+
+Write-Host "== Overview row builder ==" -ForegroundColor Cyan
+$row = New-FSvcOverviewRow -Category 'awaiting_agent' -Ticket ([pscustomobject]@{ id = 7; subject = 's' }) -RawDays 0.0625 -Since ([datetimeoffset]'2026-09-01T10:00:00+04:00') -BaseUrl 'http://x'
+Assert-Equal $row.Elapsed '1h 30m' "Elapsed formats the unrounded business-day value"
+Assert-Equal $row.Days 0.1 "Days stays rounded to one decimal"
+Assert-Equal $row.Since ([datetimeoffset]'2026-09-01T10:00:00+04:00') "Since is preserved"
+Assert-Equal $row.Link 'http://x/a/tickets/7' "Link built from BaseUrl"
 
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }

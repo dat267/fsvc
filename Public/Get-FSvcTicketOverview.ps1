@@ -7,7 +7,7 @@ function Get-FSvcTicketOverview {
         Where-Object / Group-Object / Format-Table. Rows are grouped in report
         order (unassigned, waiting, awaiting_agent) and, within each group,
         ordered by Days descending (longest-waiting first). Each row exposes the
-        numeric business-day count (Days) plus a humanized Elapsed ("13d 14h")
+        numeric business-day count (Days) plus a humanized Elapsed ("13d 14h", or "1h 30m" below a day)
         and the Since timestamp the count is measured from (created_at for
         unassigned rows, the last message otherwise).
     .EXAMPLE
@@ -33,17 +33,7 @@ function Get-FSvcTicketOverview {
         $created = ConvertTo-FSDateTimeOffset $t.created_at
         $days = 0.0
         if ($null -ne $created) { $days = Get-FSvcBusinessDaysBetween -From $created -To $now }
-        $days = [math]::Round($days, 1)
-        $out += [pscustomobject]@{
-            PSTypeName = 'FSvc.TicketOverviewRow'
-            Category   = 'unassigned'
-            Id         = $t.id
-            Subject    = $t.subject
-            Days       = $days
-            Elapsed    = Format-FSvcDuration -Days $days
-            Since      = $created
-            Link       = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
-        }
+        $out += New-FSvcOverviewRow -Category 'unassigned' -Ticket $t -RawDays $days -Since $created -BaseUrl $cfg.BaseUrl
     }
 
     $assigned = if ($AssignedQueryHash) {
@@ -62,17 +52,7 @@ function Get-FSvcTicketOverview {
         if ($null -ne $lastMessage) { $ref = $lastMessage }
         $days = 0.0
         if ($null -ne $ref) { $days = Get-FSvcBusinessDaysBetween -From $ref -To $now }
-        $days = [math]::Round($days, 1)
-        $out += [pscustomobject]@{
-            PSTypeName = 'FSvc.TicketOverviewRow'
-            Category   = $category
-            Id         = $t.id
-            Subject    = $t.subject
-            Days       = $days
-            Elapsed    = Format-FSvcDuration -Days $days
-            Since      = $ref
-            Link       = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
-        }
+        $out += New-FSvcOverviewRow -Category $category -Ticket $t -RawDays $days -Since $ref -BaseUrl $cfg.BaseUrl
     }
     return (Sort-FSvcOverviewRows -Rows $out)
 }

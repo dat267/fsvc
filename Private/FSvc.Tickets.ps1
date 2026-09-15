@@ -157,17 +157,48 @@ function Sort-FSvcOverviewRows {
     return @($Rows | Sort-Object -Property @{ Expression = { if ($rank.ContainsKey($_.Category)) { $rank[$_.Category] } else { 99 } } }, @{ Expression = { [double]$_.Days }; Descending = $true })
 }
 
-# Humanizes a business-day count as a compact "Nd Nh" string (hours come from
-# the fractional day). Used for display; the numeric Days value is kept for
-# sorting and scripting.
+# Humanizes a business-day count. At a day or more the display is "Nd Nh";
+# below a day it keeps minute resolution ("1h 30m", "20m"), because sub-day
+# ages are the ones where hours alone are misleading. Callers should pass the
+# unrounded business-day value (the numeric Days property is rounded to 1 dp).
 function Format-FSvcDuration {
     param([double]$Days)
     if ($Days -lt 0) { $Days = 0 }
-    $rounded = [math]::Round($Days, 1, [System.MidpointRounding]::AwayFromZero)
-    $whole = [int][math]::Floor($rounded)
-    $hours = [int][math]::Round(($rounded - $whole) * 24, 0, [System.MidpointRounding]::AwayFromZero)
-    if ($hours -ge 24) { $whole += 1; $hours -= 24 }
-    if ($whole -gt 0 -and $hours -gt 0) { return ('{0}d {1}h' -f $whole, $hours) }
-    if ($whole -gt 0) { return ('{0}d' -f $whole) }
-    return ('{0}h' -f $hours)
+    $minutes = [int][math]::Round($Days * 1440, 0, [System.MidpointRounding]::AwayFromZero)
+    $days = [int][math]::Floor($minutes / 1440)
+    $rem = $minutes - ($days * 1440)
+    $hours = [int][math]::Floor($rem / 60)
+    $mins = $rem - ($hours * 60)
+    if ($days -gt 0) {
+        if ($hours -gt 0) { return ('{0}d {1}h' -f $days, $hours) }
+        return ('{0}d' -f $days)
+    }
+    if ($hours -gt 0) {
+        if ($mins -gt 0) { return ('{0}h {1}m' -f $hours, $mins) }
+        return ('{0}h' -f $hours)
+    }
+    return ('{0}m' -f $mins)
+}
+
+# Builds one overview row. RawDays is the unrounded business-day count: the
+# numeric Days property is rounded to one decimal (stable for sorting), while
+# Elapsed keeps sub-day resolution.
+function New-FSvcOverviewRow {
+    param(
+        [string]$Category,
+        [object]$Ticket,
+        [double]$RawDays,
+        [AllowNull()]$Since,
+        [string]$BaseUrl
+    )
+    return [pscustomobject]@{
+        PSTypeName = 'FSvc.TicketOverviewRow'
+        Category   = $Category
+        Id         = $Ticket.id
+        Subject    = $Ticket.subject
+        Days       = [math]::Round($RawDays, 1)
+        Elapsed    = Format-FSvcDuration -Days $RawDays
+        Since      = $Since
+        Link       = ("{0}/a/tickets/{1}" -f $BaseUrl, $Ticket.id)
+    }
 }

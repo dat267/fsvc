@@ -193,7 +193,7 @@ Assert-True ($null -ne $ov[0].Id) "Id is still on the object for scripting"
 Assert-True ($rendered -match '(?m)^Elapsed\s*:') "default view shows Elapsed"
 Assert-True ($rendered -match '(?m)^Since\s*:') "default view shows the anchor timestamp"
 Assert-True ($rendered -notmatch '(?m)^Days\s*:') "default view hides the raw decimal Days"
-Assert-True ($ov[0].Elapsed -match '^\d+d( \d+h)?$') "Elapsed is a humanized business duration"
+Assert-True ($ov[0].Elapsed -match '^(\d+d( \d+h)?|\d+h( \d+m)?|\d+m)$') "Elapsed is a humanized business duration"
 Assert-True ($null -ne $ov[0].Since) "Since is a timestamp on the object"
 Assert-True ($null -ne $ov[0].Days) "numeric Days is still on the object"
 $script:FSvcTransport = $null
