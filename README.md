@@ -5,8 +5,9 @@ with your browser session cookie. It provides ticket triage, ticket content, and
 planned-date hygiene as native commands.
 
 ```powershell
-# install from GitHub (see Install below), then configure
-irm https://raw.githubusercontent.com/dat267/fsvc/main/Install.ps1 | iex
+Install-Module fsvc -Scope CurrentUser
+Import-Module fsvc
+
 Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
 
 Get-FSvcTicketOverview | Format-Table Category, Id, Subject, Days
@@ -19,9 +20,15 @@ Update-FSvcPlannedEndDates -WhatIf
 
 ## Install
 
-This module is **not published to the PowerShell Gallery**. Install it from
-GitHub instead — the bootstrap copies it into your user module folder, after
-which `Import-Module fsvc` works.
+From the PowerShell Gallery:
+
+```powershell
+Install-Module fsvc -Scope CurrentUser      # PowerShellGet
+Install-PSResource fsvc -Scope CurrentUser  # PSResourceGet
+```
+
+Without the Gallery, the same module installs from GitHub — the bootstrap
+copies it into your user module folder, after which PowerShell auto-loads it:
 
 ```powershell
 # remote one-liner (installs from main)
@@ -35,36 +42,22 @@ pwsh Install.ps1 -Ref main -Force
 pwsh Install.ps1 -Uninstall
 ```
 
-After installing, `Import-Module fsvc` is optional: the installer targets a
-folder on `PSModulePath`, so PowerShell auto-loads the module the first time you
-call one of its commands. Importing explicitly is still fine.
+Or just clone and import, with no install step:
 
 ```powershell
-Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
-Get-FSvcTicketOverview | Format-Table Category, Id, Subject, Days
-```
-
-Auto-load notes: after an upgrade (`Install.ps1 -Force`), an already-open session
-keeps the old code until `Import-Module fsvc -Force` or a new session; a custom
-`-Destination` outside `PSModulePath` needs an explicit import; and after
-`-Uninstall`, run `Remove-Module fsvc` or open a new session.
-
-Other ways to get it running:
-
-```powershell
-# clone and import, no install step
 Import-Module ./fsvc.psd1
-
-# if you clone directly into a PSModulePath folder
-Import-Module fsvc
 ```
 
-`Install-Module` / `Install-PSResource` require a package repository (the Gallery
-or a private NuGet feed); a GitHub repo URL is not one. If you operate a feed,
-`Publish-PSResource -Path . -Repository <feed>` from a clone is the standard
-route. Tagging `v*` builds and attaches the packaged module as a GitHub release
-asset (`.github/workflows/release.yml`), which `Install.ps1 -Version <tag>`
-consumes.
+After any install, `Import-Module fsvc` is optional: because the module lands on
+`PSModulePath`, PowerShell auto-loads it the first time you call one of its
+commands. After an upgrade, an already-open session keeps the old code until
+`Import-Module fsvc -Force` or a new session; after `Install.ps1 -Uninstall`, run
+`Remove-Module fsvc` or open a new session.
+
+Publishing happens on `v*` tags (`.github/workflows/release.yml`): it runs the
+tests, publishes to the Gallery using the `PSGALLERY_API_KEY` repository secret,
+and attaches a packaged zip to the GitHub release. `Install.ps1 -Version <tag>`
+consumes the tag's source archive.
 
 ## Configure
 
@@ -165,8 +158,9 @@ Layout:
 - `tests/` — zero-dependency suites (dot-source `Private` for unit tests;
   `FSvc.Module.Tests.ps1` validates the manifest and exports).
 
-CI runs the suites on `ubuntu-latest` and `windows-latest`; `v*` tags build the
-module package and attach it to a GitHub release (no Gallery publishing).
+CI runs the suites on `ubuntu-latest` and `windows-latest`; `v*` tags run the
+release workflow, which publishes to the PowerShell Gallery and attaches the
+packaged module to the GitHub release.
 
 ## License
 

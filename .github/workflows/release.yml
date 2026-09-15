@@ -25,15 +25,31 @@ jobs:
           }
           if ($fail -ne 0) { exit 1 }
 
-      - name: Package the module
+      - name: Stage the module
         shell: pwsh
         run: |
           $stage = Join-Path $env:RUNNER_TEMP 'stage/fsvc'
           New-Item -ItemType Directory -Path $stage -Force | Out-Null
           Copy-Item fsvc.psd1, fsvc.psm1 -Destination $stage
           Copy-Item Private, Public -Destination $stage -Recurse
-          Copy-Item LICENSE -Destination $stage
-          Compress-Archive -Path $stage -DestinationPath (Join-Path $env:RUNNER_TEMP 'fsvc.zip') -Force
+          Copy-Item LICENSE, README.md -Destination $stage
+          "STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install PSResourceGet
+        shell: pwsh
+        run: Install-Module Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser
+
+      - name: Publish to the PowerShell Gallery
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          if (-not $env:PSGALLERY_API_KEY) { throw "Repository secret PSGALLERY_API_KEY is not set." }
+          Publish-PSResource -Path $env:STAGE -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY
+
+      - name: Package the module
+        shell: pwsh
+        run: Compress-Archive -Path $env:STAGE -DestinationPath (Join-Path $env:RUNNER_TEMP 'fsvc.zip') -Force
 
       - name: Publish the GitHub release
         uses: softprops/action-gh-release@v2
