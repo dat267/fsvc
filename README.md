@@ -5,9 +5,8 @@ with your browser session cookie. It provides ticket triage, ticket content, and
 planned-date hygiene as native commands.
 
 ```powershell
-Install-Module fsvc -Scope CurrentUser
-Import-Module fsvc
-
+# install from GitHub (see Install below), then configure
+irm https://raw.githubusercontent.com/dat267/fsvc/main/Install.ps1 | iex
 Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
 
 Get-FSvcTicketOverview | Format-Table Category, Id, Subject, Days
@@ -69,9 +68,10 @@ consumes.
 
 ## Configure
 
-Settings live for the session; a non-empty `FSVC_*` environment variable
-overrides them, so a shared environment configuration works without re-running
-`Set-FSvcConfig`.
+Settings live for the session. Values set with `Set-FSvcConfig` take
+precedence; the `FSVC_*` environment variables fill anything not set in the
+session, so a shared environment configuration works without calling
+`Set-FSvcConfig` at all.
 
 ```powershell
 Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
@@ -99,6 +99,9 @@ All commands output objects, so use the normal PowerShell pipeline
 
 | Command | Purpose |
 | --- | --- |
+| `Set-FSvcConfig` | Store connection settings for the session |
+| `Get-FSvcConfig` | Show the effective settings (secrets masked) |
+| `Test-FSvcSession` | Verify the session cookie works |
 | `Get-FSvcTicketList` | Tickets by saved-filter id or raw `query_hash` |
 | `Get-FSvcTicketContent` | One ticket plus its conversation trace |
 | `Format-FSvcTicketContent` | Renders that object as readable text |

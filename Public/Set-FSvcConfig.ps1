@@ -3,9 +3,8 @@ function Set-FSvcConfig {
     .SYNOPSIS
         Stores Freshservice connection settings for the current session.
     .DESCRIPTION
-        Values set here are used by every fsvc command. A non-empty FSVC_*
-        environment variable overrides the stored value, so a shared environment
-        configuration wins without re-running this command.
+        Values set here are used by every fsvc command and take precedence over
+        the FSVC_* environment variables, which fill any value not set here.
     .EXAMPLE
         Set-FSvcConfig -Subdomain acme -SessionCookie '<cookie>' -CsrfToken '<token>'
     #>

@@ -29,8 +29,9 @@ unassigned list is served directly by the query:
  {"condition":"responder_id","operator":"is_in","value":["-1"],"type":"default"}]
 ```
 
-The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
-**self-assigned** unresolved tickets:
+The write commands (`Set-FSvcPlannedStartDates`, `Update-FSvcPlannedEndDates`)
+and the assigned list of `Get-FSvcTicketOverview` query **self-assigned**
+unresolved tickets:
 ```json
 [{"condition":"status","operator":"is_in","value":["0"],"type":"default"},
  {"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]
@@ -44,7 +45,8 @@ The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
 - `status = 4` — Resolved (HAR: `status_name` pairing)
 - `status = 5` — Closed (HAR: `status_name` pairing)
 - Status 1 was never observed in any HAR capture; higher/custom values are
-  instance-specific. Scripts fall back to the raw number for unknown values.
+  instance-specific. The module returns the raw numeric status and does not map
+  status names.
 
 ### responder_id values (user-confirmed)
 
@@ -55,7 +57,7 @@ The mutation commands (fill-*, sync-*) and classify's 2nd/3rd tables query
 
 ## Unassigned detection
 
-The overview script treats a ticket as unassigned when the response
+`Get-FSvcTicketOverview` treats a ticket as unassigned when the response
 `responder_id` is `null` or `-1`.
 
 ## Endpoints
@@ -63,6 +65,7 @@ The overview script treats a ticket as unassigned when the response
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/_/tickets` | list; query: `filter`, `advanced_query_hash`, `query_hash`, `include`, `order_by`, `order_type`, `page`, `per_page`; returns `{tickets, meta}` |
+| GET | `/api/_/tickets/{id}` | single ticket; returns `{ticket}` |
 | GET | `/api/_/tickets/{id}/conversations` | query: `include`, `per_page`, `order_by`, `order_type`; returns `{conversations, meta}` |
 | GET | `/api/_/ticket_filters/{id}` | returns `{ticket_filter}` |
 | GET | `/api/_/users/{id}` | returns `{user}` |
