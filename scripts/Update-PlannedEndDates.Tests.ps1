@@ -90,6 +90,26 @@ Assert-True ($qs -match "^per_page=100&query_hash=" -or $qs -match "^query_hash=
 # The critical regression: "tickets" must survive the ?-append (the 404 bug).
 Assert-True ((Append-Query -Path "tickets" -QueryString $qs) -match "^tickets\?") "tickets? kept in final URL"
 
+Write-Host "== Target hour / timezone ==" -ForegroundColor Cyan
+$offZero = [timespan]::Zero
+$offDubai = [timespan]::FromHours(4)
+$utcZone = Resolve-TimeZone -Id "UTC"
+Assert-Equal (Resolve-TimeZone -Id "") $null "empty TimeZoneId yields null"
+Assert-True ($null -ne $utcZone) "UTC resolves to a timezone"
+Assert-Equal (ConvertTo-UtcOffset -Value "+04:00").ToString() "04:00:00" "offset string parsed"
+Assert-Equal (ConvertTo-UtcOffset -Value "") $null "empty offset yields null"
+
+$tue = [datetimeoffset]::Parse("2026-08-04T12:07:30+00:00")
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $tue -Days 3 -Hour 17 -Zone $null -Offset $offZero)) "2026-08-07T17:00:00Z" "3 business days from base at 17:00 UTC"
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $tue -Days 3 -Hour 17 -Zone $utcZone -Offset $null)) "2026-08-07T17:00:00Z" "timezone id equivalent to UTC offset"
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $tue -Days 0 -Hour 9 -Zone $null -Offset $offZero)) "2026-08-04T09:00:00Z" "zero days keeps the day, sets the hour"
+
+$tueDubai = [datetimeoffset]::Parse("2026-08-04T12:07:30+04:00")
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $tueDubai -Days 3 -Hour 17 -Zone $null -Offset $offDubai)) "2026-08-07T17:00:00+04:00" "target rendered in the configured offset"
+
+$fri = [datetimeoffset]::Parse("2026-08-07T12:07:30+00:00")
+Assert-Equal (Format-Iso8601 (Get-TargetEndDate -Base $fri -Days 1 -Hour 17 -Zone $null -Offset $offZero)) "2026-08-10T17:00:00Z" "Friday +1 business day lands on Monday"
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red

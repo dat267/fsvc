@@ -19,17 +19,18 @@
 #     Freshservice accounts. If the default finds no/too many tickets, replace
 #     $Filter with your instance's saved-filter query hash (copy it from the
 #     Network tab of any tickets list request in DevTools).
-#   - "Business days" = Mon-Fri, in the account timezone (derived from the
-#     tickets' own dates; falls back to the local machine when no ticket has a
-#     date). No holidays.
+#   - "Business days" = Mon-Fri; holidays are not considered.
+#   - The new planned_end_date is derived from the ticket's LATEST conversation
+#     comment (private note or public reply - any kind), falling back to
+#     created_at when the ticket has no comments yet. So each ticket keeps its
+#     own cadence instead of sharing one global "now + N days" date.
 #
 # SCOPE: by default only touches tickets whose planned_end_date is null or in
 # the past. When $WithinDays > 0 it also touches tickets due within the next
 # $WithinDays days; future dates beyond the window are left alone. New dates
-# are rounded up to the next quarter hour so they don't look machine-generated.
-# New dates are written in the same UTC offset as the tickets' existing dates,
-# so they are consistent with the rest of the account. This is a bulk
-# operation - review the preview list before confirming.
+# are set to $TargetHour in $TimeZoneId (or $UtcOffset when no zone id), then
+# rounded up to the next quarter hour. This is a bulk operation - review the
+# preview list before confirming.
 #
 # Usage:
 #   Fill in the CONFIG variables below, then run:
@@ -43,7 +44,10 @@ $Subdomain    = "acme"                   # your Freshservice subdomain
 $SessionCookie = "PASTE_YOUR_itildesk_session_VALUE_HERE"
 $CsrfToken     = "PASTE_YOUR_X-CSRF-Token_VALUE_HERE"   # required for PUT
 
-$BusinessDays = 3                        # business days from now to set the end date
+$BusinessDays = 3                        # business days from the last comment to set the end date
+$TargetHour   = 17                       # 0-23: hour of day for the new planned_end_date
+$TimeZoneId   = ""                       # Windows or IANA id, e.g. "Arabian Standard Time" or "Asia/Dubai"
+$UtcOffset    = "+04:00"                # used when $TimeZoneId is empty; "" keeps the comment's own offset
 
 $WithinDays  = 0                         # also bump tickets due within this many days (0 = off; keep off unless intended)
 
@@ -183,6 +187,70 @@ function Get-AccountOffset {
     return $Fallback.Offset
 }
 
+# Resolves a Windows or IANA timezone id to a TimeZoneInfo. $null when the id
+# is empty (callers then use $UtcOffset or the comment's own offset).
+function Resolve-TimeZone {
+    param([string]$Id)
+    if (-not $Id) { return $null }
+    try {
+        return [System.TimeZoneInfo]::FindSystemTimeZoneById($Id)
+    } catch {
+        throw ("Unknown TimeZoneId '{0}'. Use a Windows id (e.g. 'Arabian Standard Time') or an IANA id (e.g. 'Asia/Dubai')." -f $Id)
+    }
+}
+
+# Parses a "+04:00" style UTC offset into a TimeSpan. $null when empty.
+function ConvertTo-UtcOffset {
+    param([string]$Value)
+    if (-not $Value) { return $null }
+    try {
+        return [datetimeoffset]::Parse("2000-01-01T00:00:00" + $Value).Offset
+    } catch {
+        throw ("Invalid UtcOffset '{0}'. Use a value like '+04:00'." -f $Value)
+    }
+}
+
+# Computes the new planned_end_date from a base instant: convert to the target
+# timezone/offset, add business days, set the hour, then round up to the next
+# quarter hour.
+function Get-TargetEndDate {
+    param(
+        [datetimeoffset]$Base,
+        [int]$Days,
+        [int]$Hour,
+        [AllowNull()]$Zone,
+        [AllowNull()]$Offset
+    )
+    $b = $Base
+    if ($null -ne $Zone) {
+        $b = [System.TimeZoneInfo]::ConvertTime($Base, $Zone)
+    } elseif ($null -ne $Offset) {
+        $b = $Base.ToOffset([timespan]$Offset)
+    }
+    $t = Add-BusinessDays -Start $b -Days $Days
+    $t = [datetimeoffset]::new($t.Year, $t.Month, $t.Day, $Hour, 0, 0, $t.Offset)
+    return Round-Up-QuarterHour $t
+}
+
+# Most recent conversation for a ticket, of any kind (private note or public
+# reply), or $null when it has none.
+function Get-LatestConversation {
+    param([int64]$TicketId)
+    $query = @{
+        "order_by"   = "created_at"
+        "order_type" = "desc"
+        "per_page"   = 1
+        "page"       = 1
+    }
+    $data = (Invoke-FSGet -Path ("tickets/{0}/conversations" -f $TicketId) -Query $query) | ConvertFrom-FSJson
+    $c = @($data.conversations) | Select-Object -First 1
+    if ($null -eq $c) { return $null }
+    return [pscustomobject]@{
+        CreatedAt = ConvertTo-FSDateTimeOffset $c.created_at
+        UserID    = [int64]$c.user_id
+    }
+}
+
 # Returns $true when a ticket's planned_end_date should be bumped: the date is
 # null, unparseable, in the past, or within the next $WithinDays days (when
 # WithinDays > 0). Future dates beyond the window are left alone. Now is the
@@ -250,13 +318,15 @@ do {
     $page++
 } while ($hasNext -and $page -lt 1000)
 
-# The target must use the account timezone evidenced by the tickets' own
-# dates, so pushed dates carry the same offset as existing ones.
+# The reference "now" uses the account timezone evidenced by the tickets'
+# dates, so past/future comparisons are consistent.
 $accountOffset = Get-AccountOffset -Tickets $tickets -Fallback ([datetimeoffset]::Now)
 $now = ([datetimeoffset]::Now).ToOffset($accountOffset)
-$target = Round-Up-QuarterHour (Add-BusinessDays -Start $now -Days $BusinessDays)
-$targetIso = Format-Iso8601 $target
-Write-Host ("Target planned_end_date: {0}" -f $targetIso)
+
+$zone = Resolve-TimeZone -Id $TimeZoneId
+$offset = ConvertTo-UtcOffset -Value $UtcOffset
+$where = if ($TimeZoneId) { $TimeZoneId } elseif ($UtcOffset) { $UtcOffset } else { "each comment's own offset" }
+Write-Host ("Target: {0} business days from each ticket's last comment at {1}:00 ({2})" -f $BusinessDays, $TargetHour, $where)
 Write-Host ("Scanned {0} tickets" -f $tickets.Count)
 
 # ---------------------------------------------------------------------------
@@ -268,6 +338,15 @@ foreach ($t in $tickets) {
     if (-not (Should-Bump -PlannedEndDate $t.planned_end_date -Now $now -WithinDays $WithinDays)) {
         continue
     }
+
+    # Base the new date on the latest comment (any kind), else created_at.
+    $latest = Get-LatestConversation -TicketId $t.id
+    $base = $null
+    if ($null -ne $latest) { $base = $latest.CreatedAt }
+    if ($null -eq $base) { $base = ConvertTo-FSDateTimeOffset $t.created_at }
+    if ($null -eq $base) { continue }   # nothing to derive a date from
+
+    $targetIso = Format-Iso8601 (Get-TargetEndDate -Base $base -Days $BusinessDays -Hour $TargetHour -Zone $zone -Offset $offset)
     $changes += [pscustomobject]@{
         Id   = $t.id
         From = $t.planned_end_date
