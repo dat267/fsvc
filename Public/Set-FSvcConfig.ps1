@@ -3,10 +3,10 @@ function Set-FSvcConfig {
     .SYNOPSIS
         Stores Freshservice connection settings for this session and persists them for future sessions.
     .DESCRIPTION
-        Settings are kept for the current session and also written to the user's
-        environment variables (Windows) or a managed block in the PowerShell
-        profile (other platforms), so a new session picks them up without calling
-        this again. In-session values take precedence over the persisted FSVC_*
+        Settings are kept for the current session and also written to a managed
+        block in your PowerShell profile, which sets the FSVC_* environment
+        variables when the profile loads - so a new session picks them up without
+        calling this again. In-session values take precedence over the persisted
         environment variables. Passing an empty value clears that setting.
 
         Note: SessionCookie and CsrfToken are persisted in plaintext, readable by
@@ -58,6 +58,5 @@ function Set-FSvcConfig {
         $PROFILE
     }
 
-    Set-FSvcPersistentSettings -Settings $values -OnWindows (Test-IsWindowsHost) `
-        -ProfilePath $targetProfile -SetUserEnvironment $script:FSvcSetUserEnvironment
+    Set-FSvcPersistentSettings -Settings $values -ProfilePath $targetProfile
 }

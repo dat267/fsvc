@@ -1,19 +1,11 @@
 # Persisting Set-FSvcConfig values across sessions.
 #
-# Windows: writes user environment variables (registry-backed, visible to all
-# new processes, including scheduled tasks). Other platforms: the .NET "User"
-# environment target is a silent no-op, so a delimited block is written to the
-# PowerShell profile instead. The current process is always updated by
-# Set-FSvcConfig itself.
+# Settings are written to a delimited block in the PowerShell profile, which
+# sets the FSVC_* environment variables when the profile loads. The current
+# process is updated by Set-FSvcConfig itself.
 
 $script:FSvcBlockStart = '# >>> fsvc (managed) >>>'
 $script:FSvcBlockEnd = '# <<< fsvc (managed) <<<'
-
-# True on Windows, across Windows PowerShell 5.1 (no $IsWindows) and PS 7+.
-function Test-IsWindowsHost {
-    if ($null -ne $IsWindows) { return [bool]$IsWindows }
-    return ($env:OS -eq 'Windows_NT')
-}
 
 # Maps friendly setting names to their FSVC_* environment variable names.
 # Unknown keys are ignored; empty values are kept so they can clear a setting.
@@ -81,30 +73,15 @@ function Update-FSvcProfile {
     Set-Content -LiteralPath $ProfilePath -Value $cleaned -NoNewline
 }
 
-# Persists settings for future sessions. Windows writes user environment
-# variables (via $SetUserEnvironment, injectable for tests); other platforms
-# merge into the profile block. Empty values clear a persisted setting.
+# Merges settings into the managed profile block for future sessions. Empty
+# values clear a persisted setting; the block is removed when nothing is left.
 function Set-FSvcPersistentSettings {
     param(
         [hashtable]$Settings,
-        [bool]$OnWindows,
-        [string]$ProfilePath,
-        [AllowNull()][scriptblock]$SetUserEnvironment
+        [string]$ProfilePath
     )
     $map = ConvertTo-FSvcEnvironmentMap -Settings $Settings
     if ($map.Count -eq 0) { return }
-
-    if ($OnWindows) {
-        if (-not $SetUserEnvironment) {
-            $SetUserEnvironment = {
-                param($Name, $Value)
-                if ($Value) { [Environment]::SetEnvironmentVariable($Name, $Value, 'User') }
-                else { [Environment]::SetEnvironmentVariable($Name, $null, 'User') }
-            }
-        }
-        foreach ($key in $map.Keys) { & $SetUserEnvironment $key $map[$key] }
-        return
-    }
 
     $merged = Read-FSvcProfileSettings -ProfilePath $ProfilePath
     foreach ($key in $map.Keys) {

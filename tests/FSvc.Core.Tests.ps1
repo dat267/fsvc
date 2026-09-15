@@ -165,18 +165,12 @@ Remove-Item -LiteralPath $pf -Force
 
 Write-Host "== Set-FSvcPersistentSettings ==" -ForegroundColor Cyan
 $pf2 = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-persist2-" + [guid]::NewGuid().ToString() + ".ps1")
-$script:persistCalls = @{}
-Set-FSvcPersistentSettings -Settings @{ Subdomain = 'acme'; CsrfToken = '' } -OnWindows $true -ProfilePath $pf2 -SetUserEnvironment { param($n, $v) $script:persistCalls[$n] = $v }
-Assert-Equal $script:persistCalls['FSVC_SUBDOMAIN'] 'acme' "windows path sets the user env var"
-Assert-True ($script:persistCalls.ContainsKey('FSVC_CSRF_TOKEN')) "windows path clears the empty key"
-Assert-True (-not (Test-Path -LiteralPath $pf2)) "windows path leaves the profile untouched"
-
-Set-FSvcPersistentSettings -Settings @{ Subdomain = 'acme' } -OnWindows $false -ProfilePath $pf2 -SetUserEnvironment { param($n, $v) }
-Set-FSvcPersistentSettings -Settings @{ CsrfToken = 'tok' } -OnWindows $false -ProfilePath $pf2 -SetUserEnvironment { param($n, $v) }
+Set-FSvcPersistentSettings -Settings @{ Subdomain = 'acme' } -ProfilePath $pf2
+Set-FSvcPersistentSettings -Settings @{ CsrfToken = 'tok' } -ProfilePath $pf2
 $merged = Read-FSvcProfileSettings -ProfilePath $pf2
-Assert-Equal $merged['FSVC_SUBDOMAIN'] 'acme' "non-windows merges first key"
-Assert-Equal $merged['FSVC_CSRF_TOKEN'] 'tok' "non-windows merges second key"
-Set-FSvcPersistentSettings -Settings @{ Subdomain = '' } -OnWindows $false -ProfilePath $pf2 -SetUserEnvironment { param($n, $v) }
+Assert-Equal $merged['FSVC_SUBDOMAIN'] 'acme' "first setting persisted"
+Assert-Equal $merged['FSVC_CSRF_TOKEN'] 'tok' "second setting merged into the same block"
+Set-FSvcPersistentSettings -Settings @{ Subdomain = '' } -ProfilePath $pf2
 Assert-True (-not (Read-FSvcProfileSettings -ProfilePath $pf2).ContainsKey('FSVC_SUBDOMAIN')) "empty clears a persisted key"
 Remove-Item -LiteralPath $pf2 -Force -ErrorAction SilentlyContinue
 

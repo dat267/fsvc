@@ -9,9 +9,6 @@ if (-not (Get-Variable -Name FSvcConfig -Scope Script -ErrorAction SilentlyConti
 if (-not (Get-Variable -Name FSvcProfilePath -Scope Script -ErrorAction SilentlyContinue)) {
     $script:FSvcProfilePath = $PROFILE
 }
-if (-not (Get-Variable -Name FSvcSetUserEnvironment -Scope Script -ErrorAction SilentlyContinue)) {
-    $script:FSvcSetUserEnvironment = $null
-}
 
 $script:FSvcEnvNames = @{
     Subdomain     = 'FSVC_SUBDOMAIN'
