@@ -4,7 +4,9 @@ function Get-FSvcTicketOverview {
         Three-list triage: unassigned, waiting on customer, awaiting agent.
     .DESCRIPTION
         Returns one object per ticket with a Category property, so pipe it to
-        Where-Object / Group-Object / Format-Table.
+        Where-Object / Group-Object / Format-Table. Rows are grouped in report
+        order (unassigned, waiting, awaiting_agent) and, within each group,
+        ordered by Days descending (longest-waiting first).
     .EXAMPLE
         Get-FSvcTicketOverview -OlderThanDays 2 | Format-Table Category, Id, Subject, Days
     #>
@@ -63,5 +65,5 @@ function Get-FSvcTicketOverview {
             Link     = ("{0}/a/tickets/{1}" -f $cfg.BaseUrl, $t.id)
         }
     }
-    return $out
+    return (Sort-FSvcOverviewRows -Rows $out)
 }

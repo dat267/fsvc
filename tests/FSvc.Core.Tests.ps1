@@ -188,6 +188,18 @@ $trimFile = Join-Path ([System.IO.Path]::GetTempPath()) ("fsvc-trim-" + [guid]::
 Assert-Equal (Read-FSvcConfigFile -Path $trimFile)['Subdomain'] 'acme' "config values are trimmed"
 Remove-Item -LiteralPath $trimFile -Force -ErrorAction SilentlyContinue
 
+Write-Host "== Overview row ordering ==" -ForegroundColor Cyan
+$rows = @(
+    [pscustomobject]@{ Category = 'awaiting_agent'; Id = 1; Days = 5 },
+    [pscustomobject]@{ Category = 'unassigned'; Id = 2; Days = 10 },
+    [pscustomobject]@{ Category = 'waiting'; Id = 3; Days = 1 },
+    [pscustomobject]@{ Category = 'unassigned'; Id = 4; Days = 300 },
+    [pscustomobject]@{ Category = 'awaiting_agent'; Id = 5; Days = 20 }
+)
+$ordered = @(Sort-FSvcOverviewRows -Rows $rows)
+Assert-Equal (($ordered | ForEach-Object { $_.Id }) -join ',') '4,2,3,5,1' "groups in report order, Days descending within each"
+Assert-Equal (($rows | ForEach-Object { $_.Id }) -join ',') '1,2,3,4,5' "sorter does not mutate the input"
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

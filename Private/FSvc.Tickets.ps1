@@ -146,3 +146,13 @@ function Get-FSvcPlannedEndDate {
     if (-not (Test-FSvcEndDateNeedsUpdate -PlannedEndDate $Ticket.planned_end_date -Target $target)) { return $null }
     return $target
 }
+
+# Orders overview rows: groups in report order (unassigned, waiting,
+# awaiting_agent), and within a group by Days descending (longest-waiting
+# first). Returns a new array; the input is not mutated.
+function Sort-FSvcOverviewRows {
+    param([AllowEmptyCollection()][object[]]$Rows)
+    if (-not $Rows) { return @() }
+    $rank = @{ 'unassigned' = 0; 'waiting' = 1; 'awaiting_agent' = 2 }
+    return @($Rows | Sort-Object -Property @{ Expression = { if ($rank.ContainsKey($_.Category)) { $rank[$_.Category] } else { 99 } } }, @{ Expression = { [double]$_.Days }; Descending = $true })
+}
