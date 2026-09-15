@@ -126,6 +126,17 @@ Assert-Equal $v2.Author "99" "numeric author fallback"
 Assert-Equal $v2.Direction "outgoing" "outgoing direction"
 Assert-Equal $v2.Body "<p>hi</p>" "body fallback when no body_text"
 
+Write-Host "== Named ticket views ==" -ForegroundColor Cyan
+$self = Get-FSvcViewQueryHash -View SelfAssigned
+$unassigned = Get-FSvcViewQueryHash -View Unassigned
+Assert-True ($self -match '"responder_id".*"0"') "self-assigned view targets responder 0"
+Assert-True ($unassigned -match '"responder_id".*"-1"') "unassigned view targets responder -1"
+Assert-True ($self -match '"status"') "views filter on status"
+$parsedSelf = $self | ConvertFrom-Json
+$parsedUnassigned = $unassigned | ConvertFrom-Json
+Assert-Equal $parsedSelf.Count 2 "self-assigned view has two conditions"
+Assert-Equal $parsedUnassigned.Count 2 "unassigned view has two conditions"
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

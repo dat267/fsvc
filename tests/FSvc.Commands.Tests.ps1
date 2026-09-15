@@ -152,6 +152,22 @@ Assert-Equal $lc.Direction "incoming" "latest conversation direction"
 Assert-Equal (Format-Iso8601 $lc.At) "2026-09-01T10:30:00+04:00" "latest conversation timestamp"
 $script:FSvcTransport = $null
 
+Write-Host "== Get-FSvcViewTickets ==" -ForegroundColor Cyan
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; SessionCookie = 'x'; CsrfToken = 't' }
+New-StubTransport -Handler { param($Request) '{"tickets":[{"id":1}],"meta":{"has_next":false}}' }
+$null = Get-FSvcViewTickets -View SelfAssigned -Config $script:FSvcConfig
+Assert-True ($script:StubCalls[0].Query.query_hash -match '"responder_id".*"0"') "self-assigned query hash sent"
+$null = Get-FSvcViewTickets -View Unassigned -Config $script:FSvcConfig
+Assert-True ($script:StubCalls[1].Query.query_hash -match '"-1"') "unassigned query hash sent"
+
+Write-Host "== Write commands default to the self-assigned view ==" -ForegroundColor Cyan
+New-StubTransport -Handler { param($Request) '{"tickets":[{"id":10,"subject":"T","planned_start_date":null,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}' }
+$null = Set-FSvcPlannedStartDates -WhatIf
+Assert-True ($script:StubCalls[0].Query.query_hash -match '"responder_id".*"0"') "default view is self-assigned"
+$null = Set-FSvcPlannedStartDates -View Unassigned -WhatIf
+Assert-True ($script:StubCalls[1].Query.query_hash -match '"-1"') "-View Unassigned overrides the default"
+$script:FSvcTransport = $null
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green

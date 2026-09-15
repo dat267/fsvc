@@ -3,9 +3,11 @@ function Set-FSvcPlannedStartDates {
     .SYNOPSIS
         Fills a null planned_start_date from created_at (rounded up to the quarter hour).
     .DESCRIPTION
-        Only touches self-assigned unresolved tickets whose planned_start_date is
-        null. Supports -WhatIf / -Confirm; use -Confirm:$false for unattended runs.
-        Runs are serialised with a lock file.
+        Defaults to the SelfAssigned view (self-assigned unresolved tickets);
+        pass -View Unassigned or a raw -QueryHash to target something else.
+        Only touches tickets whose planned_start_date is null. Supports -WhatIf /
+        -Confirm; use -Confirm:$false for unattended runs. Runs are serialised
+        with a lock file.
     .EXAMPLE
         Set-FSvcPlannedStartDates -WhatIf
     .EXAMPLE
@@ -13,15 +15,22 @@ function Set-FSvcPlannedStartDates {
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     param(
-        [string]$QueryHash = '[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]',
+        [ValidateSet('SelfAssigned', 'Unassigned')][string]$View = 'SelfAssigned',
+        [string]$QueryHash,
         [int]$PerPage = 100,
         [string]$LogPath
     )
     $cfg = Get-FSvcEffectiveConfig
     $effectiveLog = if ($PSBoundParameters.ContainsKey('LogPath')) { $LogPath } else { $cfg.LogPath }
 
+    $tickets = if ($QueryHash) {
+        Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg
+    } else {
+        Get-FSvcViewTickets -View $View -PerPage $PerPage -Config $cfg
+    }
+
     $changes = @()
-    foreach ($t in @(Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg)) {
+    foreach ($t in @($tickets)) {
         if (-not (Test-FSvcFillStart -PlannedStartDate $t.planned_start_date -CreatedAt $t.created_at)) { continue }
         $at = ConvertTo-FSDateTimeOffset $t.created_at
         if ($null -eq $at) { continue }

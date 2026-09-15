@@ -10,8 +10,8 @@ function Get-FSvcTicketOverview {
     #>
     [CmdletBinding()]
     param(
-        [string]$UnassignedQueryHash = '[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["-1"],"type":"default"}]',
-        [string]$AssignedQueryHash = '[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]',
+        [string]$UnassignedQueryHash,
+        [string]$AssignedQueryHash,
         [double]$OlderThanDays = 2,
         [int]$PerPage = 100
     )
@@ -19,7 +19,12 @@ function Get-FSvcTicketOverview {
     $now = [datetimeoffset]::Now
 
     $out = @()
-    foreach ($t in @(Get-FSvcTickets -QueryHash $UnassignedQueryHash -PerPage $PerPage -Config $cfg)) {
+    $unassigned = if ($UnassignedQueryHash) {
+        Get-FSvcTickets -QueryHash $UnassignedQueryHash -PerPage $PerPage -Config $cfg
+    } else {
+        Get-FSvcViewTickets -View Unassigned -PerPage $PerPage -Config $cfg
+    }
+    foreach ($t in @($unassigned)) {
         $created = ConvertTo-FSDateTimeOffset $t.created_at
         $days = 0.0
         if ($null -ne $created) { $days = Get-FSvcBusinessDaysBetween -From $created -To $now }
@@ -32,7 +37,12 @@ function Get-FSvcTicketOverview {
         }
     }
 
-    foreach ($t in @(Get-FSvcTickets -QueryHash $AssignedQueryHash -PerPage $PerPage -Config $cfg)) {
+    $assigned = if ($AssignedQueryHash) {
+        Get-FSvcTickets -QueryHash $AssignedQueryHash -PerPage $PerPage -Config $cfg
+    } else {
+        Get-FSvcViewTickets -View SelfAssigned -PerPage $PerPage -Config $cfg
+    }
+    foreach ($t in @($assigned)) {
         $latest = Get-FSvcLatestConversation -TicketId $t.id -Config $cfg
         $lastMessage = $null
         $lastUser = [int64]0

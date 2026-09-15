@@ -3,6 +3,8 @@ function Update-FSvcPlannedEndDates {
     .SYNOPSIS
         Sets planned_end_date to the ticket's last comment + N business days, at a chosen hour and timezone.
     .DESCRIPTION
+        Defaults to the SelfAssigned view (self-assigned unresolved tickets);
+        pass -View Unassigned or a raw -QueryHash to target something else.
         Every scanned ticket is recomputed so its planned end stays close to N
         business days after its latest comment (private note or public reply).
         A date that would be in the past is clamped to the nearest future
@@ -16,7 +18,8 @@ function Update-FSvcPlannedEndDates {
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     param(
-        [string]$QueryHash = '[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]',
+        [ValidateSet('SelfAssigned', 'Unassigned')][string]$View = 'SelfAssigned',
+        [string]$QueryHash,
         [int]$BusinessDays = 3,
         [ValidateRange(0, 23)][int]$TargetHour = 17,
         [string]$TimeZoneId,
@@ -32,7 +35,11 @@ function Update-FSvcPlannedEndDates {
     $zone = Resolve-FSvcTimeZone -Id $tz
     $offset = ConvertTo-FSvcUtcOffset -Value $off
 
-    $tickets = @(Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg)
+    $tickets = @(if ($QueryHash) {
+            Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg
+        } else {
+            Get-FSvcViewTickets -View $View -PerPage $PerPage -Config $cfg
+        })
     $accountOffset = Get-FSvcAccountOffset -Tickets $tickets -Fallback ([datetimeoffset]::Now)
     $now = ([datetimeoffset]::Now).ToOffset($accountOffset)
 

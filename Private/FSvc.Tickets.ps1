@@ -1,5 +1,35 @@
 # Ticket querying and triage helpers.
 
+# Named saved views. Defined once so the "self-assigned unresolved" and
+# "unassigned unresolved" query_hash strings cannot drift between commands.
+$script:FSvcViews = [ordered]@{
+    SelfAssigned = '[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["0"],"type":"default"}]'
+    Unassigned   = '[{"condition":"status","operator":"is_in","value":["0"],"type":"default"},{"condition":"responder_id","operator":"is_in","value":["-1"],"type":"default"}]'
+}
+
+# The query_hash for a named view.
+function Get-FSvcViewQueryHash {
+    param([Parameter(Mandatory)][ValidateSet('SelfAssigned', 'Unassigned')][string]$View)
+    return $script:FSvcViews[$View]
+}
+
+# Tickets for a named view, paginated.
+function Get-FSvcViewTickets {
+    param(
+        [Parameter(Mandatory)][ValidateSet('SelfAssigned', 'Unassigned')][string]$View,
+        [int]$PerPage = 100,
+        [int]$MaxPages = 1000,
+        [hashtable]$Config
+    )
+    return Invoke-FSvcPagedQuery -Path "tickets" -ArrayKey "tickets" -MaxPages $MaxPages -Config $Config -BaseQuery @{
+        "order_by"   = "created_at"
+        "order_type" = "asc"
+        "per_page"   = $PerPage
+        "query_hash" = (Get-FSvcViewQueryHash -View $View)
+    }
+}
+
+
 # Paginates a tickets query, returning every ticket as an object.
 function Get-FSvcTickets {
     param(

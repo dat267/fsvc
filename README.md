@@ -121,7 +121,9 @@ Update-FSvcPlannedEndDates -BusinessDays 3 -TargetHour 17 -UtcOffset '+04:00'
 The two write commands support `-WhatIf` / `-Confirm` and emit one object per
 change (`Id`, `Field`, `From`, `To`, `Applied`). Runs are serialised with a lock
 file so overlapping calls cannot double-apply, and `-LogPath` records a
-transcript.
+transcript. They default to the `SelfAssigned` view; pass `-View Unassigned` or
+a raw `-QueryHash` to target something else. `Get-FSvcTicketOverview` uses the
+named `SelfAssigned`/`Unassigned` views unless you override its query hashes.
 
 - `Update-FSvcPlannedEndDates` recomputes every scanned ticket to its **last
   comment + N business days** (private note or public reply, falling back to
