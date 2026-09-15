@@ -46,20 +46,67 @@ function Get-FSvcTickets {
     }
 }
 
+# One page of a ticket's conversations, newest first, normalised to the shared
+# view shape. HasNext reports whether the API holds more pages.
+function Get-FSvcConversationPage {
+    param([int64]$TicketId, [int]$Page = 1, [int]$PerPage = 50, [hashtable]$Config)
+    $query = @{
+        "order_by"   = "created_at"
+        "order_type" = "desc"
+        "per_page"   = $PerPage
+        "page"       = $Page
+    }
+    $data = (Invoke-FSvcGet -Path ("tickets/{0}/conversations" -f $TicketId) -Query $query -Config $Config) | ConvertFrom-FSvcJson
+    $items = @(@($data.conversations) | Where-Object { $null -ne $_ } | ForEach-Object { ConvertTo-FSvcConversationView $_ })
+    return [pscustomobject]@{
+        Items   = $items
+        HasNext = [bool]$data.meta.has_next
+    }
+}
+
 # Most recent conversation for a ticket - any kind, private note or public
 # reply - or $null when it has none.
 function Get-FSvcLatestConversation {
     param([int64]$TicketId, [hashtable]$Config)
-    $query = @{
-        "order_by"   = "created_at"
-        "order_type" = "desc"
-        "per_page"   = 1
-        "page"       = 1
+    $page = Get-FSvcConversationPage -TicketId $TicketId -Page 1 -PerPage 1 -Config $Config
+    return (@($page.Items) | Select-Object -First 1)
+}
+
+# Leading run of incoming (customer) messages before the first outgoing one.
+function Get-FSvcUnansweredCount {
+    param([AllowEmptyCollection()][object[]]$Conversations)
+    $count = 0
+    foreach ($c in $Conversations) {
+        if ($c.Direction -eq 'incoming') { $count++ } else { break }
     }
-    $data = (Invoke-FSvcGet -Path ("tickets/{0}/conversations" -f $TicketId) -Query $query -Config $Config) | ConvertFrom-FSvcJson
-    $c = @($data.conversations) | Select-Object -First 1
-    if ($null -eq $c) { return $null }
-    return ConvertTo-FSvcConversationView $c
+    return $count
+}
+
+# Newest-first conversation views for a ticket, plus how many customer messages
+# the agent has not answered yet (the consecutive incoming run at the tail).
+# Pages only while a whole page is unanswered, so an answered thread costs one
+# request; MaxPages caps a pathological all-customer thread.
+function Get-FSvcTicketThread {
+    param([int64]$TicketId, [hashtable]$Config, [int]$PerPage = 50, [int]$MaxPages = 5)
+    $items = @()
+    $unanswered = 0
+    $pageNumber = 1
+    while ($true) {
+        $page = Get-FSvcConversationPage -TicketId $TicketId -Page $pageNumber -PerPage $PerPage -Config $Config
+        $pageItems = @($page.Items)
+        $items += $pageItems
+        $incoming = Get-FSvcUnansweredCount -Conversations $pageItems
+        $unanswered += $incoming
+        if ($incoming -lt $pageItems.Count) { break }
+        if (-not $page.HasNext) { break }
+        if ($pageNumber -ge $MaxPages) { break }
+        $pageNumber++
+    }
+    return [pscustomobject]@{
+        Items      = $items
+        Latest     = (@($items) | Select-Object -First 1)
+        Unanswered = $unanswered
+    }
 }
 
 # Normalises a raw API conversation (or the latest-conversation response) into
@@ -189,6 +236,7 @@ function New-FSvcOverviewRow {
         [object]$Ticket,
         [double]$RawDays,
         [AllowNull()]$Since,
+        [AllowNull()]$FollowUps,
         [string]$BaseUrl
     )
     return [pscustomobject]@{
@@ -199,6 +247,7 @@ function New-FSvcOverviewRow {
         Days       = [math]::Round($RawDays, 1)
         Elapsed    = Format-FSvcDuration -Days $RawDays
         Since      = $Since
+        FollowUps  = $FollowUps
         Link       = ("{0}/a/tickets/{1}" -f $BaseUrl, $Ticket.id)
     }
 }

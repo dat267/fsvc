@@ -198,6 +198,29 @@ Assert-True ($null -ne $ov[0].Since) "Since is a timestamp on the object"
 Assert-True ($null -ne $ov[0].Days) "numeric Days is still on the object"
 $script:FSvcTransport = $null
 
+Write-Host "== Customer follow-ups ==" -ForegroundColor Cyan
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
+New-StubTransport -Handler {
+    param($Request)
+    if ($Request.Path -like '*/conversations') {
+        if ($Request.Query.page -eq 1) {
+            '{"conversations":[{"id":3,"user_id":2100,"incoming":true,"created_at":"2026-09-10T10:00:00+04:00"},{"id":2,"user_id":2100,"incoming":true,"created_at":"2026-09-09T10:00:00+04:00"}],"meta":{"has_next":true}}'
+        } else {
+            '{"conversations":[{"id":1,"user_id":2100,"incoming":true,"created_at":"2026-09-08T10:00:00+04:00"},{"id":0,"user_id":3100,"incoming":false,"created_at":"2026-09-07T10:00:00+04:00"}],"meta":{"has_next":false}}'
+        }
+    } elseif ($Request.Query.query_hash -like '*-1*') {
+        '{"tickets":[],"meta":{"has_next":false}}'
+    } else {
+        '{"tickets":[{"id":10,"subject":"T","responder_id":3100,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}'
+    }
+}
+$followRows = @(Get-FSvcTicketOverview -OlderThanDays 2)
+Assert-Equal $followRows.Count 1 "one self-assigned ticket"
+Assert-Equal $followRows[0].Category 'awaiting_agent' "last message is from the customer"
+Assert-Equal $followRows[0].FollowUps 3 "counts unanswered customer messages across pages"
+Assert-True (($followRows[0] | Out-String -Width 4096) -match 'FollowUps\s*:\s*3') "rendered view shows the follow-up count"
+$script:FSvcTransport = $null
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host ("{0} test(s) failed" -f $failures) -ForegroundColor Red; exit 1 }
 Write-Host "All tests passed." -ForegroundColor Green
