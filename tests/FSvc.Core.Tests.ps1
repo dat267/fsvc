@@ -61,12 +61,22 @@ Write-Host "== Timezone config ==" -ForegroundColor Cyan
 Assert-Equal (ConvertTo-FSvcUtcOffset -Value "+04:00").ToString() "04:00:00" "offset parsed"
 Assert-Equal (ConvertTo-FSvcUtcOffset -Value "") $null "empty offset is null"
 
-Write-Host "== Category ==" -ForegroundColor Cyan
-$cnow = [datetimeoffset]::Parse("2026-08-04T12:00:00+00:00")
-Assert-Equal (Get-FSvcTicketCategory -ResponderID (-1) -LastMessage $null -LastUserID 0 -CreatedAt $cnow.AddDays(-3) -OlderThanDays 1 -Now $cnow) "unassigned" "responder -1 unassigned"
-Assert-Equal (Get-FSvcTicketCategory -ResponderID 5 -LastMessage $cnow -LastUserID 9 -CreatedAt $cnow.AddDays(-3) -OlderThanDays 1 -Now $cnow) "awaiting_agent" "other replied awaiting agent"
-Assert-Equal (Get-FSvcTicketCategory -ResponderID 5 -LastMessage $cnow.AddDays(-3) -LastUserID 5 -CreatedAt $cnow.AddDays(-3) -OlderThanDays 1 -Now $cnow) "waiting" "stale agent waiting"
-Assert-Equal (Get-FSvcTicketCategory -ResponderID 5 -LastMessage $cnow -LastUserID 5 -CreatedAt $cnow.AddDays(-3) -OlderThanDays 1 -Now $cnow) "none" "recent agent none"
+Write-Host "== Triage ==" -ForegroundColor Cyan
+$tnow = [datetimeoffset]::Parse("2026-08-04T12:00:00+00:00")
+$tUnassigned = [pscustomobject]@{ id = 1; responder_id = -1; created_at = "2026-07-31T12:00:00+00:00" }
+$triageUnassigned = Get-FSvcTriage -Ticket $tUnassigned -LatestConversation $null -OlderThanDays 1 -Now $tnow
+Assert-Equal $triageUnassigned.Category "unassigned" "unassigned ticket triaged unassigned"
+Assert-Equal $triageUnassigned.Since ([datetimeoffset]::Parse("2026-07-31T12:00:00+00:00")) "unassigned anchor is created_at"
+Assert-Equal $triageUnassigned.Days 2.0 "unassigned age counts business days"
+$tAssigned = [pscustomobject]@{ id = 2; responder_id = 5; created_at = "2026-07-31T12:00:00+00:00" }
+$triageAwaiting = Get-FSvcTriage -Ticket $tAssigned -LatestConversation ([pscustomobject]@{ At = $tnow; UserId = 9 }) -OlderThanDays 5 -Now $tnow
+Assert-Equal $triageAwaiting.Category "awaiting_agent" "customer reply awaits the agent"
+Assert-Equal $triageAwaiting.Since $tnow "awaiting_agent anchor is the last message"
+$triageWaiting = Get-FSvcTriage -Ticket $tAssigned -LatestConversation ([pscustomobject]@{ At = $tnow.AddDays(-4); UserId = 5 }) -OlderThanDays 1 -Now $tnow
+Assert-Equal $triageWaiting.Category "waiting" "stale agent reply waits on the customer"
+Assert-Equal $triageWaiting.Since $tnow.AddDays(-4) "waiting anchor is the last message"
+Assert-True ($null -eq (Get-FSvcTriage -Ticket $tAssigned -LatestConversation ([pscustomobject]@{ At = $tnow; UserId = 5 }) -OlderThanDays 1 -Now $tnow)) "recent agent reply needs no triage"
+Assert-Equal (Get-FSvcTriage -Ticket $tAssigned -LatestConversation $null -OlderThanDays 1 -Now $tnow).Category "waiting" "assigned with no reply falls back to created_at"
 
 Write-Host "== Config precedence ==" -ForegroundColor Cyan
 $old = $env:FSVC_SUBDOMAIN

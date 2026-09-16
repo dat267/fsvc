@@ -128,26 +128,6 @@ function ConvertTo-FSvcConversationView {
     }
 }
 
-# Triage bucket for a self-assigned ticket: unassigned / awaiting_agent /
-# waiting / none. Mirrors the standalone overview logic.
-function Get-FSvcTicketCategory {
-    param(
-        [AllowNull()]$ResponderID,
-        [AllowNull()]$LastMessage,
-        [int64]$LastUserID,
-        [datetimeoffset]$CreatedAt,
-        [double]$OlderThanDays,
-        [datetimeoffset]$Now
-    )
-    if ($null -eq $ResponderID -or [int64]$ResponderID -lt 0) { return "unassigned" }
-    $last = ConvertTo-FSDateTimeOffset $LastMessage
-    if ($null -ne $last -and $LastUserID -ne [int64]$ResponderID) { return "awaiting_agent" }
-    $ref = $CreatedAt
-    if ($null -ne $last) { $ref = $last }
-    if ((Get-FSvcBusinessDaysBetween -From $ref -To $Now) -gt $OlderThanDays) { return "waiting" }
-    return "none"
-}
-
 # The UTC offset evidenced by the tickets' own dates (planned_end_date
 # preferred, created_at fallback), or the fallback's offset.
 function Get-FSvcAccountOffset {
@@ -250,4 +230,54 @@ function New-FSvcOverviewRow {
         Unanswered = $Unanswered
         Link       = ("{0}/a/tickets/{1}" -f $BaseUrl, $Ticket.id)
     }
+}
+
+# Triage decision for one ticket: which bucket it belongs to and the timestamp
+# its clock runs from (the anchor Since/Elapsed are measured from). Returns
+# $null when the ticket needs no attention. Owning bucket and anchor together
+# is the point: they must never disagree.
+function Get-FSvcTriage {
+    param(
+        [Parameter(Mandatory)]$Ticket,
+        [AllowNull()]$LatestConversation,
+        [double]$OlderThanDays,
+        [datetimeoffset]$Now
+    )
+    $responderId = $Ticket.responder_id
+    if ($null -eq $responderId -or [int64]$responderId -lt 0) {
+        $created = ConvertTo-FSDateTimeOffset $Ticket.created_at
+        $days = 0.0
+        if ($null -ne $created) { $days = Get-FSvcBusinessDaysBetween -From $created -To $Now }
+        return [pscustomobject]@{
+            Category = 'unassigned'
+            Since    = $created
+            Days     = $days
+        }
+    }
+    $lastAt = $null
+    $lastUser = [int64]0
+    if ($null -ne $LatestConversation) {
+        $lastAt = $LatestConversation.At
+        $lastUser = [int64]$LatestConversation.UserId
+    }
+    if ($null -ne $lastAt -and $lastUser -ne [int64]$responderId) {
+        return [pscustomobject]@{
+            Category = 'awaiting_agent'
+            Since    = $lastAt
+            Days     = (Get-FSvcBusinessDaysBetween -From $lastAt -To $Now)
+        }
+    }
+    $ref = $lastAt
+    if ($null -eq $ref) { $ref = ConvertTo-FSDateTimeOffset $Ticket.created_at }
+    if ($null -ne $ref) {
+        $days = Get-FSvcBusinessDaysBetween -From $ref -To $Now
+        if ($days -gt $OlderThanDays) {
+            return [pscustomobject]@{
+                Category = 'waiting'
+                Since    = $ref
+                Days     = $days
+            }
+        }
+    }
+    return $null
 }

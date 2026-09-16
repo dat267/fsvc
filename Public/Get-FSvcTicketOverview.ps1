@@ -46,17 +46,9 @@ function Get-FSvcTicketOverview {
     }
     foreach ($t in @($assigned)) {
         $thread = Get-FSvcTicketThread -TicketId $t.id -Config $cfg
-        $latest = $thread.Latest
-        $lastMessage = $null
-        $lastUser = [int64]0
-        if ($null -ne $latest) { $lastMessage = $latest.At; $lastUser = $latest.UserId }
-        $category = Get-FSvcTicketCategory -ResponderID $t.responder_id -LastMessage $lastMessage -LastUserID $lastUser -CreatedAt (ConvertTo-FSDateTimeOffset $t.created_at) -OlderThanDays $OlderThanDays -Now $now
-        if ($category -ne 'waiting' -and $category -ne 'awaiting_agent') { continue }
-        $ref = ConvertTo-FSDateTimeOffset $t.created_at
-        if ($null -ne $lastMessage) { $ref = $lastMessage }
-        $days = 0.0
-        if ($null -ne $ref) { $days = Get-FSvcBusinessDaysBetween -From $ref -To $now }
-        $out += New-FSvcOverviewRow -Category $category -Ticket $t -RawDays $days -Since $ref -Unanswered $thread.Unanswered -BaseUrl $cfg.BaseUrl
+        $triage = Get-FSvcTriage -Ticket $t -LatestConversation $thread.Latest -OlderThanDays $OlderThanDays -Now $now
+        if ($null -eq $triage) { continue }
+        $out += New-FSvcOverviewRow -Category $triage.Category -Ticket $t -RawDays $triage.Days -Since $triage.Since -Unanswered $thread.Unanswered -BaseUrl $cfg.BaseUrl
     }
     return (Sort-FSvcOverviewRows -Rows $out)
 }

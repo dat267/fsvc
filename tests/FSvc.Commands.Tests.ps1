@@ -220,6 +220,7 @@ $followRows = @(Get-FSvcTicketOverview -OlderThanDays 2)
 Assert-Equal $followRows.Count 1 "one self-assigned ticket"
 Assert-Equal $followRows[0].Category 'awaiting_agent' "last message is from the customer"
 Assert-Equal $followRows[0].Unanswered 3 "counts unanswered customer messages across pages"
+Assert-Equal $followRows[0].Since ([datetimeoffset]::Parse("2026-09-10T10:00:00+04:00")) "awaiting_agent row anchors on the last message"
 Assert-True (($followRows[0] | Out-String -Width 4096) -match 'Unanswered\s*:\s*3') "rendered view shows the unanswered count"
 $script:FSvcTransport = $null
 
