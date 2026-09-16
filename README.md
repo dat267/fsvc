@@ -106,7 +106,7 @@ All commands output objects, so use the normal PowerShell pipeline
 | `Get-FSvcTicketList` | Tickets by saved-filter id or raw `query_hash` |
 | `Get-FSvcTicketContent` | One ticket plus its conversation trace |
 | `Format-FSvcTicketContent` | Renders that object as readable text |
-| `Get-FSvcTicketOverview` | Triage: `unassigned`, `waiting`, `awaiting_agent` |
+| `Get-FSvcTicketOverview` | Triage of your tickets: `waiting`, `awaiting_agent` (`-IncludeUnassigned` adds `unassigned`) |
 | `Set-FSvcPlannedStartDates` | Fill null `planned_start_date` from `created_at` |
 | `Update-FSvcPlannedEndDates` | Set `planned_end_date` to last comment + N business days |
 
@@ -117,7 +117,9 @@ Get-FSvcTicketList -FilterId 1100 | Format-Table id, subject, status, priority
 Get-FSvcTicketContent -Id 10100 | ConvertTo-Json -Depth 10
 Get-FSvcTicketOverview -OlderThanDays 2 | Where-Object Category -eq 'waiting'
 ```
-`Get-FSvcTicketOverview` rows are grouped `unassigned`, `waiting`, `awaiting_agent`
+`Get-FSvcTicketOverview` covers the tickets assigned to you -- `waiting` and
+`awaiting_agent` -- and leaves unassigned tickets out unless you pass
+`-IncludeUnassigned`. Rows are grouped
 and sorted by `Days` descending within each group. `Days` is a numeric business-day
 count (weekends skipped, holidays not modelled) measured from `Since` -- `created_at`
 for unassigned rows, the last message otherwise. `Since` keeps the account's own UTC

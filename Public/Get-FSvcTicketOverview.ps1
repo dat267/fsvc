@@ -1,38 +1,48 @@
 function Get-FSvcTicketOverview {
     <#
     .SYNOPSIS
-        Three-list triage: unassigned, waiting on customer, awaiting agent.
+        Triage of your own tickets: waiting on the customer, awaiting an agent.
     .DESCRIPTION
         Returns one object per ticket with a Category property, so pipe it to
-        Where-Object / Group-Object / Format-Table. Rows are grouped in report
-        order (unassigned, waiting, awaiting_agent) and, within each group,
-        ordered by Days descending (longest-waiting first). Each row exposes the
-        numeric business-day count (Days) plus a humanized Elapsed ("13d 14h", or "1h 30m" below a day)
-        and the Since timestamp the count is measured from (created_at for
-        unassigned rows, the last message otherwise). Unanswered is the number
-        of customer messages the agent has not answered yet (consecutive
-        incoming messages since the last agent message); it is $null for
-        unassigned rows, which are not fetched conversation by conversation.
+        Where-Object / Group-Object / Format-Table. Your unassigned backlog is
+        left out by default; pass -IncludeUnassigned to add it (it costs one
+        more view fetch). Rows are grouped in report order (unassigned when
+        included, waiting, awaiting_agent) and, within each group, ordered by
+        Days descending (longest-waiting first). Each row exposes the numeric
+        business-day count (Days) plus a humanized Elapsed ("13d 14h", or
+        "1h 30m" below a day) and the Since timestamp the count is measured from
+        (created_at for unassigned rows, the last message otherwise). Unanswered
+        is the number of customer messages the agent has not answered yet
+        (consecutive incoming messages since the last agent message); it is
+        $null for unassigned rows, which are not fetched conversation by
+        conversation.
     .EXAMPLE
         Get-FSvcTicketOverview -OlderThanDays 2 | Format-Table Category, Id, Subject, Days
+    .EXAMPLE
+        Get-FSvcTicketOverview -IncludeUnassigned
     #>
     [CmdletBinding()]
     param(
         [string]$UnassignedQueryHash,
         [string]$AssignedQueryHash,
         [double]$OlderThanDays = 2,
-        [int]$PerPage = 100
+        [int]$PerPage = 100,
+        [switch]$IncludeUnassigned
     )
     $cfg = Get-FSvcEffectiveConfig
     $now = [datetimeoffset]::Now
 
     $out = @()
-    $unassigned = Get-FSvcTargetTickets -View Unassigned -QueryHash $UnassignedQueryHash -PerPage $PerPage -Config $cfg
-    foreach ($t in @($unassigned)) {
-        $created = ConvertTo-FSDateTimeOffset $t.created_at
-        $days = 0.0
-        if ($null -ne $created) { $days = Get-FSvcBusinessDaysBetween -From $created -To $now }
-        $out += New-FSvcOverviewRow -Category 'unassigned' -Ticket $t -RawDays $days -Since $created -Unanswered $null -BaseUrl $cfg.BaseUrl
+    # Unassigned tickets are not your work, so they stay out of the report
+    # unless asked for; this also avoids a whole extra view fetch.
+    if ($IncludeUnassigned) {
+        $unassigned = Get-FSvcTargetTickets -View Unassigned -QueryHash $UnassignedQueryHash -PerPage $PerPage -Config $cfg
+        foreach ($t in @($unassigned)) {
+            $created = ConvertTo-FSDateTimeOffset $t.created_at
+            $days = 0.0
+            if ($null -ne $created) { $days = Get-FSvcBusinessDaysBetween -From $created -To $now }
+            $out += New-FSvcOverviewRow -Category 'unassigned' -Ticket $t -RawDays $days -Since $created -Unanswered $null -BaseUrl $cfg.BaseUrl
+        }
     }
 
     $assigned = Get-FSvcTargetTickets -View SelfAssigned -QueryHash $AssignedQueryHash -PerPage $PerPage -Config $cfg

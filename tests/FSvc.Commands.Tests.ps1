@@ -203,6 +203,29 @@ Assert-True ($null -ne $ov[0].Since) "Since is a timestamp on the object"
 Assert-True ($null -ne $ov[0].Days) "numeric Days is still on the object"
 $script:FSvcTransport = $null
 
+Write-Host "== Overview excludes unassigned by default ==" -ForegroundColor Cyan
+$script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
+New-StubTransport -Handler {
+    param($Request)
+    if ($Request.Path -like '*/conversations') { '{"conversations":[],"meta":{"has_next":false}}' }
+    elseif ($Request.Query.query_hash -like '*-1*') { '{"tickets":[{"id":99,"subject":"UNASSIGNED","responder_id":-1,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}' }
+    else { '{"tickets":[{"id":10,"subject":"MINE","responder_id":3100,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}' }
+}
+$default = @(Get-FSvcTicketOverview -OlderThanDays 2)
+Assert-Equal @($default | Where-Object { $_.Category -eq 'unassigned' }).Count 0 "unassigned rows are not in the default output"
+Assert-Equal @($default).Count 1 "only the self-assigned ticket is reported"
+Assert-True (-not (@($script:StubCalls | Where-Object { $_.Query.query_hash -like '*-1*' }).Count)) "the unassigned view is not even fetched"
+New-StubTransport -Handler {
+    param($Request)
+    if ($Request.Path -like '*/conversations') { '{"conversations":[],"meta":{"has_next":false}}' }
+    elseif ($Request.Query.query_hash -like '*-1*') { '{"tickets":[{"id":99,"subject":"UNASSIGNED","responder_id":-1,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}' }
+    else { '{"tickets":[{"id":10,"subject":"MINE","responder_id":3100,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}' }
+}
+$withUnassigned = @(Get-FSvcTicketOverview -OlderThanDays 2 -IncludeUnassigned)
+Assert-Equal @($withUnassigned | Where-Object { $_.Category -eq 'unassigned' }).Count 1 "IncludeUnassigned brings the bucket back"
+Assert-Equal $withUnassigned[0].Category 'unassigned' "unassigned still sorts first"
+$script:FSvcTransport = $null
+
 Write-Host "== Unanswered customer messages ==" -ForegroundColor Cyan
 $script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
 New-StubTransport -Handler {
