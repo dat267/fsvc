@@ -188,7 +188,8 @@ New-StubTransport -Handler {
 $ov = @(Get-FSvcTicketOverview -OlderThanDays 2)
 Assert-Equal $ov[0].PSObject.TypeNames[0] 'FSvc.TicketOverviewRow' "overview rows carry a type name"
 Update-FormatData -PrependPath (Join-Path $repoRoot 'fsvc.format.ps1xml')
-$rendered = $ov[0] | Out-String
+# Normalise CRLF so the (?m)^...$ anchors below behave the same on Windows and Unix.
+$rendered = ($ov[0] | Out-String) -replace "`r", ''
 Assert-True ($rendered -match '(?m)^Link\s*:') "default view shows Link"
 Assert-True ($rendered -notmatch '(?m)^Id\s*:') "default view hides Id"
 Assert-True ($null -ne $ov[0].Id) "Id is still on the object for scripting"
