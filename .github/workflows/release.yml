@@ -38,7 +38,7 @@ jobs:
         run: |
           $stage = Join-Path $env:RUNNER_TEMP 'stage/fsvc'
           New-Item -ItemType Directory -Path $stage -Force | Out-Null
-          Copy-Item fsvc.psd1, fsvc.psm1 -Destination $stage
+          Copy-Item fsvc.psd1, fsvc.psm1, fsvc.format.ps1xml -Destination $stage
           Copy-Item Private, Public -Destination $stage -Recurse
           Copy-Item LICENSE, README.md -Destination $stage
           "STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append

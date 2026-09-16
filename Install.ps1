@@ -76,7 +76,7 @@ function Get-FSvcCurrentUserModuleDir {
 
 # Files and folders that make up the module.
 function Get-FSvcModuleItems {
-    return @('fsvc.psd1', 'fsvc.psm1', 'Private', 'Public', 'LICENSE')
+    return @('fsvc.psd1', 'fsvc.psm1', 'fsvc.format.ps1xml', 'Private', 'Public', 'LICENSE')
 }
 
 # Allow dot-sourcing for tests: define helpers without installing.
