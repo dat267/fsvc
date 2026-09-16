@@ -27,11 +27,7 @@ function Get-FSvcTicketOverview {
     $now = [datetimeoffset]::Now
 
     $out = @()
-    $unassigned = if ($UnassignedQueryHash) {
-        Get-FSvcTickets -QueryHash $UnassignedQueryHash -PerPage $PerPage -Config $cfg
-    } else {
-        Get-FSvcViewTickets -View Unassigned -PerPage $PerPage -Config $cfg
-    }
+    $unassigned = Get-FSvcTargetTickets -View Unassigned -QueryHash $UnassignedQueryHash -PerPage $PerPage -Config $cfg
     foreach ($t in @($unassigned)) {
         $created = ConvertTo-FSDateTimeOffset $t.created_at
         $days = 0.0
@@ -39,11 +35,7 @@ function Get-FSvcTicketOverview {
         $out += New-FSvcOverviewRow -Category 'unassigned' -Ticket $t -RawDays $days -Since $created -Unanswered $null -BaseUrl $cfg.BaseUrl
     }
 
-    $assigned = if ($AssignedQueryHash) {
-        Get-FSvcTickets -QueryHash $AssignedQueryHash -PerPage $PerPage -Config $cfg
-    } else {
-        Get-FSvcViewTickets -View SelfAssigned -PerPage $PerPage -Config $cfg
-    }
+    $assigned = Get-FSvcTargetTickets -View SelfAssigned -QueryHash $AssignedQueryHash -PerPage $PerPage -Config $cfg
     foreach ($t in @($assigned)) {
         $thread = Get-FSvcTicketThread -TicketId $t.id -Config $cfg
         $triage = Get-FSvcTriage -Ticket $t -LatestConversation $thread.Latest -OlderThanDays $OlderThanDays -Now $now

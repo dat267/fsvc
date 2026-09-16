@@ -32,11 +32,7 @@ function Update-FSvcPlannedEndDates {
 
     $offset = ConvertTo-FSvcUtcOffset -Value $off
 
-    $tickets = @(if ($QueryHash) {
-            Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg
-        } else {
-            Get-FSvcViewTickets -View $View -PerPage $PerPage -Config $cfg
-        })
+    $tickets = @(Get-FSvcTargetTickets -View $View -QueryHash $QueryHash -PerPage $PerPage -Config $cfg)
     $accountOffset = Get-FSvcAccountOffset -Tickets $tickets -Fallback ([datetimeoffset]::Now)
     $now = ([datetimeoffset]::Now).ToOffset($accountOffset)
 

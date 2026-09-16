@@ -23,11 +23,7 @@ function Set-FSvcPlannedStartDates {
     $cfg = Get-FSvcEffectiveConfig
     $effectiveLog = if ($PSBoundParameters.ContainsKey('LogPath')) { $LogPath } else { $cfg.LogPath }
 
-    $tickets = if ($QueryHash) {
-        Get-FSvcTickets -QueryHash $QueryHash -PerPage $PerPage -Config $cfg
-    } else {
-        Get-FSvcViewTickets -View $View -PerPage $PerPage -Config $cfg
-    }
+    $tickets = Get-FSvcTargetTickets -View $View -QueryHash $QueryHash -PerPage $PerPage -Config $cfg
 
     $changes = @()
     foreach ($t in @($tickets)) {

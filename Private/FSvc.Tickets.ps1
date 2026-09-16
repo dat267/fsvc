@@ -13,36 +13,23 @@ function Get-FSvcViewQueryHash {
     return $script:FSvcViews[$View]
 }
 
-# Tickets for a named view, paginated.
-function Get-FSvcViewTickets {
+# Ticket selection for a command: a raw query hash when given, otherwise a
+# named saved view. Owns the view -> query_hash mapping and the paging, so
+# callers only say which tickets they want.
+function Get-FSvcTargetTickets {
     param(
-        [Parameter(Mandatory)][ValidateSet('SelfAssigned', 'Unassigned')][string]$View,
-        [int]$PerPage = 100,
-        [int]$MaxPages = 1000,
-        [hashtable]$Config
-    )
-    return Invoke-FSvcPagedQuery -Path "tickets" -ArrayKey "tickets" -MaxPages $MaxPages -Config $Config -BaseQuery @{
-        "order_by"   = "created_at"
-        "order_type" = "asc"
-        "per_page"   = $PerPage
-        "query_hash" = (Get-FSvcViewQueryHash -View $View)
-    }
-}
-
-
-# Paginates a tickets query, returning every ticket as an object.
-function Get-FSvcTickets {
-    param(
+        [ValidateSet('SelfAssigned', 'Unassigned')][string]$View = 'SelfAssigned',
         [string]$QueryHash,
         [int]$PerPage = 100,
         [int]$MaxPages = 1000,
         [hashtable]$Config
     )
+    $hash = if ($QueryHash) { $QueryHash } else { Get-FSvcViewQueryHash -View $View }
     return Invoke-FSvcPagedQuery -Path "tickets" -ArrayKey "tickets" -MaxPages $MaxPages -Config $Config -BaseQuery @{
         "order_by"   = "created_at"
         "order_type" = "asc"
         "per_page"   = $PerPage
-        "query_hash" = $QueryHash
+        "query_hash" = $hash
     }
 }
 

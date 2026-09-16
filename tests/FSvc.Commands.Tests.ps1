@@ -152,13 +152,15 @@ Assert-Equal $lc.Direction "incoming" "latest conversation direction"
 Assert-Equal (Format-Iso8601 $lc.At) "2026-09-01T10:30:00+04:00" "latest conversation timestamp"
 $script:FSvcTransport = $null
 
-Write-Host "== Get-FSvcViewTickets ==" -ForegroundColor Cyan
+Write-Host "== Get-FSvcTargetTickets ==" -ForegroundColor Cyan
 $script:FSvcConfig = @{ BaseUrl = 'http://stub'; ItildeskSession = 'x'; CsrfToken = 't' }
 New-StubTransport -Handler { param($Request) '{"tickets":[{"id":1}],"meta":{"has_next":false}}' }
-$null = Get-FSvcViewTickets -View SelfAssigned -Config $script:FSvcConfig
-Assert-True ($script:StubCalls[0].Query.query_hash -match '"responder_id".*"0"') "self-assigned query hash sent"
-$null = Get-FSvcViewTickets -View Unassigned -Config $script:FSvcConfig
-Assert-True ($script:StubCalls[1].Query.query_hash -match '"-1"') "unassigned query hash sent"
+$null = Get-FSvcTargetTickets -View Unassigned -Config $script:FSvcConfig
+Assert-True ($script:StubCalls[0].Query.query_hash -match '"-1"') "named view supplies its query hash"
+$null = Get-FSvcTargetTickets -View Unassigned -QueryHash '[{"custom":true}]' -Config $script:FSvcConfig
+Assert-Equal $script:StubCalls[1].Query.query_hash '[{"custom":true}]' "explicit query hash wins over the view"
+$null = Get-FSvcTargetTickets -Config $script:FSvcConfig
+Assert-True ($script:StubCalls[2].Query.query_hash -match '"responder_id".*"0"') "defaults to the self-assigned view"
 
 Write-Host "== Write commands default to the self-assigned view ==" -ForegroundColor Cyan
 New-StubTransport -Handler { param($Request) '{"tickets":[{"id":10,"subject":"T","planned_start_date":null,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}' }
