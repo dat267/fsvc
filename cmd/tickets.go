@@ -130,8 +130,6 @@ func toCatTickets(tickets []Ticket) []catTicket {
 	return out
 }
 
-const categoriesWorkers = 8
-
 func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 	now := nowInTZ()
 
@@ -218,13 +216,10 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 // pool. The conversation fetch per ticket is the slow part and runs
 // concurrently; results are collected under a mutex.
 func classifyTickets(ctx context.Context, client *Client, tickets []Ticket, olderThanDays float64, now time.Time) (staleAgent, awaitingCustomer []catTicket, _ error) {
-	workers := categoriesWorkers
-	if len(tickets) < workers {
-		workers = len(tickets)
-	}
-	if workers == 0 {
+	if len(tickets) == 0 {
 		return nil, nil, nil
 	}
+	workers := poolSize(len(tickets))
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -716,10 +711,7 @@ func (cs ChangeSet) Apply(ctx context.Context, client *Client) error {
 	}
 
 	// Apply PUTs concurrently.
-	workers := categoriesWorkers
-	if len(cs) < workers {
-		workers = len(cs)
-	}
+	workers := poolSize(len(cs))
 	work := make(chan int)
 	var (
 		wg       sync.WaitGroup

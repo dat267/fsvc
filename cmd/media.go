@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 var imgSrcRe = regexp.MustCompile(`(?i)<img\b[^>]*\bsrc=["']([^"']+)["']`)
@@ -33,60 +34,34 @@ func resolveImageURL(base, src string) string {
 	return strings.TrimSuffix(base, "/") + "/" + strings.TrimPrefix(src, "/")
 }
 
-// gatherMedia downloads images referenced by the ticket description and
-// conversation bodies, plus image-type attachments, and records non-image
-// attachments as metadata. Downloads that fail are skipped without error.
-func gatherMedia(ctx context.Context, client *Client, doc *exportDoc) error {
-	seen := map[string]bool{}
-	add := func(owner, id string, data []byte, mime, name string) {
-		if seen[id] {
-			return
-		}
-		seen[id] = true
-		doc.Images = append(doc.Images, exportImage{ID: id, Data: data, Mime: mime, Name: name, Owner: owner})
-	}
-
-	fetch := func(owner, src string) {
-		resolved := resolveImageURL(client.BaseURL(), src)
-		data, err := client.Download(ctx, resolved)
-		if err != nil {
-			return
-		}
-		name := resolved[strings.LastIndex(resolved, "/")+1:]
-		add(owner, resolved, data, http.DetectContentType(data), name)
-	}
-
-	for _, src := range imageSrcs(doc.DescHTML) {
-		fetch("ticket", src)
-	}
-	walkAttachments(ctx, client, doc, "ticket", attachmentsOf(doc.Ticket), add)
-
-	for _, conv := range doc.Conversations {
-		owner := "conv-" + conv.ID
-		for _, src := range imageSrcs(conv.BodyHTML) {
-			fetch(owner, src)
-		}
-		walkAttachments(ctx, client, doc, owner, conv.Attachments, add)
-	}
-	return nil
+// mediaJob is one image to download. name is the attachment name when known;
+// otherwise the file name is derived from the URL.
+type mediaJob struct {
+	owner string
+	src   string
+	name  string
 }
 
-func walkAttachments(ctx context.Context, client *Client, doc *exportDoc, owner string, atts []map[string]any, add func(owner, id string, data []byte, mime, name string)) {
-	for _, m := range atts {		contentType := exportField(m, "content_type")
-		name := exportField(m, "name")
-		canonical := exportField(m, "canonical_url")
-		if canonical == "" {
-			canonical = exportField(m, "attachment_url")
-		}
-		if strings.HasPrefix(contentType, "image/") {
-			data, err := client.Download(ctx, canonical)
-			if err != nil {
+// gatherMedia downloads images referenced by the ticket description and
+// conversation bodies, plus image-type attachments, and records non-image
+// attachments as metadata. Downloads run on the configured worker pool and
+// failures are skipped without error. Results keep request order so exports
+// stay deterministic.
+func gatherMedia(ctx context.Context, client *Client, doc *exportDoc) error {
+	var jobs []mediaJob
+
+	collectAttachments := func(owner string, atts []map[string]any) {
+		for _, m := range atts {
+			contentType := exportField(m, "content_type")
+			name := exportField(m, "name")
+			canonical := exportField(m, "canonical_url")
+			if canonical == "" {
+				canonical = exportField(m, "attachment_url")
+			}
+			if strings.HasPrefix(contentType, "image/") {
+				jobs = append(jobs, mediaJob{owner: owner, src: canonical, name: name})
 				continue
 			}
-			// Dedupe against <img> srcs by resolved URL.
-			id := resolveImageURL(client.BaseURL(), canonical)
-			add(owner, id, data, http.DetectContentType(data), name)
-		} else {
 			doc.Attachments = append(doc.Attachments, exportAttachment{
 				ID:          exportField(m, "id"),
 				Name:        name,
@@ -96,6 +71,70 @@ func walkAttachments(ctx context.Context, client *Client, doc *exportDoc, owner 
 			})
 		}
 	}
+
+	for _, src := range imageSrcs(doc.DescHTML) {
+		jobs = append(jobs, mediaJob{owner: "ticket", src: src})
+	}
+	collectAttachments("ticket", attachmentsOf(doc.Ticket))
+	for _, conv := range doc.Conversations {
+		owner := "conv-" + conv.ID
+		for _, src := range imageSrcs(conv.BodyHTML) {
+			jobs = append(jobs, mediaJob{owner: owner, src: src})
+		}
+		collectAttachments(owner, conv.Attachments)
+	}
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	// One slot per job so results can be reassembled in request order.
+	downloaded := make([]*exportImage, len(jobs))
+	work := make(chan int, len(jobs))
+	for i := range jobs {
+		work <- i
+	}
+	close(work)
+
+	var wg sync.WaitGroup
+	for i := 0; i < poolSize(len(jobs)); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range work {
+				if ctx.Err() != nil {
+					return
+				}
+				job := jobs[idx]
+				resolved := resolveImageURL(client.BaseURL(), job.src)
+				data, err := client.Download(ctx, resolved)
+				if err != nil {
+					continue
+				}
+				name := job.name
+				if name == "" {
+					name = resolved[strings.LastIndex(resolved, "/")+1:]
+				}
+				downloaded[idx] = &exportImage{
+					ID:    resolved,
+					Data:  data,
+					Mime:  http.DetectContentType(data),
+					Name:  name,
+					Owner: job.owner,
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	seen := make(map[string]bool, len(jobs))
+	for _, img := range downloaded {
+		if img == nil || seen[img.ID] {
+			continue
+		}
+		seen[img.ID] = true
+		doc.Images = append(doc.Images, *img)
+	}
+	return nil
 }
 
 // sameMediaHost reports whether host may serve media for an API at baseHost.

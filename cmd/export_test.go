@@ -207,9 +207,9 @@ func TestExportField_JSON(t *testing.T) {
 
 func TestParseExportDoc(t *testing.T) {
 	ticket := map[string]any{
-		"id":              float64(10100),
-		"subject":         "Printer not working",
-		"description":     "<p>Broken &amp; bad</p>",
+		"id":               float64(10100),
+		"subject":          "Printer not working",
+		"description":      "<p>Broken &amp; bad</p>",
 		"description_text": "Printer jammed",
 	}
 	convs := []map[string]any{

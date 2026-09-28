@@ -230,7 +230,7 @@ xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
 </w:body></w:document>`
 
 	files := map[string]string{
-		"[Content_Types].xml":              contentTypes,
+		"[Content_Types].xml": contentTypes,
 		"_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>

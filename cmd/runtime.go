@@ -19,6 +19,11 @@ var appName = "fsvc"
 // tz is set by Execute from the --tz flag before commands run.
 var tz string
 
+// concurrency is the maximum number of in-flight requests during the
+// concurrent phases (conversation scans, batch updates, media downloads).
+// Execute overrides it from --concurrency; tests may set it directly.
+var concurrency = 8
+
 // now returns the current time; tests may replace it to pin the clock.
 var now = time.Now
 
@@ -99,6 +104,7 @@ func Execute(ctx context.Context) {
 
 	app.cfgPath = cli.ConfigFile
 	tz = cli.TimeZone
+	concurrency = cli.Concurrency
 	client.Update(clientConfigFromCLI(cli))
 	k.FatalIfErrorf(kongCtx.Run())
 }

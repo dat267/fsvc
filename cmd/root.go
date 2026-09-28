@@ -22,6 +22,7 @@ type CLI struct {
 	CSRFToken       string                `help:"CSRF token for write requests" env:"FSVC_CSRF_TOKEN"`
 	BaseURL         string                `help:"Override API base URL (hidden; inferred from subdomain)" hidden:"" env:"FSVC_BASE_URL"`
 	TimeZone        string                `help:"Timezone for business-day calculations (e.g. Europe/London)" env:"FSVC_TZ"`
+	Concurrency     int                   `help:"Max in-flight requests for concurrent phases" default:"8" env:"FSVC_CONCURRENCY"`
 	Version         VersionCmd            `cmd:"" help:"Show version"`
 	Session         SessionCmd            `cmd:"" help:"Verify the session cookie"`
 	Tickets         TicketsCmdGroup       `cmd:"" help:"Work with tickets"`

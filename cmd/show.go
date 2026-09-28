@@ -44,7 +44,9 @@ var priorityName = map[int64]string{1: "Low", 2: "Medium", 3: "High", 4: "Urgent
 
 // statusName maps numeric ticket status values to their display names.
 // Confirmed from HAR captures and the private API notes:
-//   2 = Open, 3 = Pending, 4 = Resolved, 5 = Closed.
+//
+//	2 = Open, 3 = Pending, 4 = Resolved, 5 = Closed.
+//
 // Unknown values (custom statuses) fall back to the raw number.
 var statusName = map[int64]string{
 	2: "Open",

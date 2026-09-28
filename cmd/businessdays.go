@@ -100,5 +100,5 @@ func ShouldPushEnd(plannedEnd *time.Time, now time.Time, withinHours int) bool {
 	if plannedEnd.Before(now) {
 		return true
 	}
-	return withinHours > 0 && !plannedEnd.After(now.Add(time.Duration(withinHours) * time.Hour))
+	return withinHours > 0 && !plannedEnd.After(now.Add(time.Duration(withinHours)*time.Hour))
 }
