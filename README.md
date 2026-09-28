@@ -13,16 +13,7 @@ platform, no runtime dependencies.
 
 ## Install
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/dat267/fsvc/main/install.sh | sh
-```
-
-Installs the latest release into `~/.local/bin`. Override the target with
-`FSVC_INSTALL_DIR`, pin a release with `FSVC_VERSION=v1.0.0`.
-
-### Manual download
-
-Pick the asset for your platform from the
+Download the asset for your platform from the
 [releases page](https://github.com/dat267/fsvc/releases/latest) and put it on
 `PATH`:
 
