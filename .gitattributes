@@ -1,0 +1,6 @@
+# Keep text files LF so generated output matches the golden files on Windows.
+* text=auto eol=lf
+
+# Golden files are compared byte for byte.
+testdata/golden/** -text
+*.docx binary

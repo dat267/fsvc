@@ -1,11 +1,16 @@
 package cmd
 
 import (
+	"archive/zip"
 	"bytes"
 	"flag"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -39,6 +44,96 @@ func checkGolden(t *testing.T, name string, got []byte) {
 	}
 	diff, _ := diffBytes(t, want, got)
 	t.Errorf("golden mismatch in %s:\n%s", path, diff)
+}
+
+// checkGoldenZip compares got against a golden zip by entry name and
+// decompressed content. Zip bytes depend on the Go toolchain's compressor, so
+// a raw byte comparison fails whenever CI and the developer build with
+// different Go versions; comparing entries still catches real changes.
+func checkGoldenZip(t *testing.T, name string, got []byte) {
+	t.Helper()
+	path := filepath.Join("..", "testdata", "golden", name)
+	if *updateGolden {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatalf("mkdir golden dir: %v", err)
+		}
+		if err := os.WriteFile(path, got, 0644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("golden file %s unreadable (run go test ./cmd/ -run TestGolden -update-golden): %v", path, err)
+	}
+	diff, err := compareZipEntries(want, got)
+	if err != nil {
+		t.Fatalf("compare %s: %v", path, err)
+	}
+	if diff != "" {
+		t.Errorf("golden mismatch in %s:\n%s", path, diff)
+	}
+}
+
+// compareZipEntries lists entry-level differences between two zips, or returns
+// "" when every entry name and decompressed content matches.
+func compareZipEntries(want, got []byte) (string, error) {
+	wantEntries, err := readZipEntries(want)
+	if err != nil {
+		return "", fmt.Errorf("read golden zip: %w", err)
+	}
+	gotEntries, err := readZipEntries(got)
+	if err != nil {
+		return "", fmt.Errorf("read output zip: %w", err)
+	}
+
+	names := make([]string, 0, len(wantEntries)+len(gotEntries))
+	for name := range wantEntries {
+		names = append(names, name)
+	}
+	for name := range gotEntries {
+		if _, ok := wantEntries[name]; !ok {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+
+	var b strings.Builder
+	for _, name := range names {
+		w, inWant := wantEntries[name]
+		g, inGot := gotEntries[name]
+		switch {
+		case !inWant:
+			fmt.Fprintf(&b, "unexpected entry in output: %s\n", name)
+		case !inGot:
+			fmt.Fprintf(&b, "missing entry in output: %s\n", name)
+		case !bytes.Equal(w, g):
+			fmt.Fprintf(&b, "entry %s differs (golden %d bytes, output %d bytes)\n", name, len(w), len(g))
+		}
+	}
+	return b.String(), nil
+}
+
+// readZipEntries returns each entry's decompressed content by name.
+func readZipEntries(data []byte) (map[string][]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, err
+	}
+	entries := make(map[string][]byte, len(zr.File))
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			return nil, fmt.Errorf("open %s: %w", f.Name, err)
+		}
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", f.Name, err)
+		}
+		entries[f.Name] = content
+	}
+	return entries, nil
 }
 
 // diffBytes shells out to diff for a readable unified diff, falling back to a
@@ -150,5 +245,83 @@ func TestGoldenDocx(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderDocx: %v", err)
 	}
-	checkGolden(t, "export.docx", got)
+	checkGoldenZip(t, "export.docx", got)
+}
+
+// rewriteZip repacks data with the given method, optionally mutating each
+// entry's content first. It stands in for a different Go toolchain's packer.
+func rewriteZip(t *testing.T, data []byte, method uint16, mutate func(name string, content []byte) []byte) []byte {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("read zip: %v", err)
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("open %s: %v", f.Name, err)
+		}
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read %s: %v", f.Name, err)
+		}
+		if mutate != nil {
+			content = mutate(f.Name, content)
+		}
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: f.Name, Method: method})
+		if err != nil {
+			t.Fatalf("create %s: %v", f.Name, err)
+		}
+		if _, err := w.Write(content); err != nil {
+			t.Fatalf("write %s: %v", f.Name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestGoldenZipComparisonToleratesDifferentCompression(t *testing.T) {
+	golden, err := os.ReadFile(filepath.Join("..", "testdata", "golden", "export.docx"))
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	repacked := rewriteZip(t, golden, zip.Store, nil)
+	if bytes.Equal(golden, repacked) {
+		t.Fatal("test setup: expected repacking to change the bytes")
+	}
+	diff, err := compareZipEntries(golden, repacked)
+	if err != nil {
+		t.Fatalf("compareZipEntries: %v", err)
+	}
+	if diff != "" {
+		t.Errorf("expected identical content to compare equal, got:\n%s", diff)
+	}
+}
+
+func TestGoldenZipComparisonCatchesContentChanges(t *testing.T) {
+	golden, err := os.ReadFile(filepath.Join("..", "testdata", "golden", "export.docx"))
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	modified := rewriteZip(t, golden, zip.Deflate, func(name string, content []byte) []byte {
+		if name != "word/document.xml" {
+			return content
+		}
+		return bytes.Replace(content, []byte("<w:t>"), []byte("<w:t>X"), 1)
+	})
+	diff, err := compareZipEntries(golden, modified)
+	if err != nil {
+		t.Fatalf("compareZipEntries: %v", err)
+	}
+	if diff == "" {
+		t.Fatal("expected a changed entry to be reported")
+	}
+	if !strings.Contains(diff, "word/document.xml") {
+		t.Errorf("expected the diff to name the changed entry, got %q", diff)
+	}
 }
