@@ -102,9 +102,36 @@ environment variables override the file.
 | `csrf-token` | `--csrf-token` | `FSVC_CSRF_TOKEN` | CSRF token for write operations |
 | `base-url` | `--base-url` | `FSVC_BASE_URL` | override base URL (default `https://<subdomain>.freshservice.com`) |
 | `time-zone` | `--time-zone` | `FSVC_TZ` | timezone for business-day math (e.g. `Europe/London`) |
+| `concurrency` | `--concurrency` | `FSVC_CONCURRENCY` | max in-flight requests (default 8) |
 
 `fsvc config init|path|show|set|unset|edit` manage the file. Point at a mock
 server with `--base-url http://127.0.0.1:PORT` for safe testing.
+
+## Concurrency
+
+Fanned-out work runs on a bounded worker pool:
+
+- the per-ticket conversation scan in `tickets classify`
+- the batch PUTs behind `fill-start-dates`, `push-end-dates`, `sync-priority`
+  and `sync-urgency-impact`
+- image downloads during `tickets export` and `tickets show`
+
+The default is 8 in-flight requests. `--concurrency N` (`FSVC_CONCURRENCY`)
+changes it; `--concurrency 1` forces strictly sequential requests. Downloads
+keep request order, so concurrent exports are still deterministic.
+
+Against a mock server holding each request for 10 ms, the 24-ticket scan
+scales almost linearly:
+
+| workers | wall time | speedup |
+| --- | --- | --- |
+| 1 | 268 ms | 1.0x |
+| 2 | 132 ms | 2.0x |
+| 4 | 66 ms | 4.1x |
+| 8 | 34 ms | 7.8x |
+| 16 | 25 ms | 10.8x |
+
+Reproduce: `go test -run XXX -bench BenchmarkClassifyConversationScan ./cmd/`.
 
 ## Commands
 

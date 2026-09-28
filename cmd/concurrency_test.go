@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/alecthomas/kong"
 )
 
 // setConcurrency pins the configured worker count for the duration of a test.
@@ -53,8 +55,8 @@ func (t *inflightTracker) stats() (max, total int) {
 	return t.max, t.total
 }
 
-// sixTickets is a ticket list mock body with n self-assigned tickets.
-func sixTickets(n int) string {
+// ticketListBody is a ticket-list mock body with n self-assigned tickets.
+func ticketListBody(n int) string {
 	items := make([]string, n)
 	for i := range items {
 		items[i] = fmt.Sprintf(`{"id":%d,"subject":"T%d","priority":2,"status":2,"responder_id":99,"created_at":"2026-08-01T00:00:00Z"}`, 1000+i, i)
@@ -68,7 +70,7 @@ func TestClassifyConcurrencyBoundsInFlight(t *testing.T) {
 
 	const tickets = 6
 	track := &inflightTracker{delay: 25 * time.Millisecond}
-	body := sixTickets(tickets)
+	body := ticketListBody(tickets)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +109,7 @@ func TestClassifyConcurrencyOneRunsSequentially(t *testing.T) {
 
 	const tickets = 4
 	track := &inflightTracker{delay: 10 * time.Millisecond}
-	body := sixTickets(tickets)
+	body := ticketListBody(tickets)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -262,5 +264,31 @@ func TestChangeSetApplyConcurrencyBoundsInFlight(t *testing.T) {
 func TestConcurrencyDefaultsToEight(t *testing.T) {
 	if concurrency != 8 {
 		t.Errorf("expected a default worker count of 8, got %d", concurrency)
+	}
+}
+
+func TestConcurrencyFlagBindsAndDefaults(t *testing.T) {
+	var cli CLI
+	parser, err := kong.New(&cli)
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	if _, err := parser.Parse([]string{"session"}); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if cli.Concurrency != 8 {
+		t.Errorf("expected a default of 8, got %d", cli.Concurrency)
+	}
+
+	var custom CLI
+	customParser, err := kong.New(&custom)
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	if _, err := customParser.Parse([]string{"session", "--concurrency", "3"}); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if custom.Concurrency != 3 {
+		t.Errorf("expected --concurrency 3 to bind, got %d", custom.Concurrency)
 	}
 }
