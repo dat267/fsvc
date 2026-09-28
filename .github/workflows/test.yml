@@ -19,6 +19,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: gofmt
+        if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
       - name: Vet
         run: go vet ./...
 
