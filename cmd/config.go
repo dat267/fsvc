@@ -18,24 +18,18 @@ type ConfigCmdGroup struct {
 	Unset ConfigUnsetCmd `cmd:"" help:"Unset a config value"`
 }
 
-// configKeys are the settings the CLI reads from the config file. Anything else
-// passed to 'config set' is a typo, so it is rejected instead of being stored
-// where nothing will ever read it. TestConfigKeysMatchCLIFlags keeps this list
-// aligned with the CLI's own flags.
-var configKeys = []string{
-	"base-url",
-	"concurrency",
-	"csrf-token",
-	"itildesk-session",
-	"subdomain",
-	"time-zone",
-}
-
-// secretConfigKeys are never printed by 'config show' or echoed by
-// 'config set'; only their presence is reported.
-var secretConfigKeys = []string{
-	"csrf-token",
-	"itildesk-session",
+// configClasses is every setting the CLI reads, mapped to whether its value is
+// a secret that must not be printed. Registering each setting here is what makes
+// 'config set' typo-safe and lets TestConfigClassesMatchCLIFlags fail closed
+// when a flag is added without a decision; the secret:"" tags in root.go
+// document the two credentials at the point of definition.
+var configClasses = map[string]bool{ // key -> secret
+	"base-url":         false,
+	"concurrency":      false,
+	"csrf-token":       true,
+	"itildesk-session": true,
+	"subdomain":        false,
+	"time-zone":        false,
 }
 
 type ConfigPathCmd struct{}
@@ -88,7 +82,10 @@ func maskSecrets(cfg map[string]any) map[string]any {
 	for key, value := range cfg {
 		masked[key] = value
 	}
-	for _, key := range secretConfigKeys {
+	for key, secret := range configClasses {
+		if !secret {
+			continue
+		}
 		value, ok := masked[key]
 		if !ok {
 			continue
@@ -104,12 +101,7 @@ func maskSecrets(cfg map[string]any) map[string]any {
 
 // isSecretConfigKey reports whether a key's value must not be echoed.
 func isSecretConfigKey(key string) bool {
-	for _, secret := range secretConfigKeys {
-		if key == secret {
-			return true
-		}
-	}
-	return false
+	return configClasses[key]
 }
 
 type ConfigSetCmd struct {
@@ -174,12 +166,13 @@ func (cmd *ConfigUnsetCmd) Run(app *App) error {
 // validateConfigKey rejects keys the CLI would never read, so that a typo fails
 // loudly instead of silently leaving the CLI unauthenticated.
 func validateConfigKey(key string) error {
-	for _, known := range configKeys {
-		if key == known {
-			return nil
-		}
+	if _, known := configClasses[key]; known {
+		return nil
 	}
-	known := append([]string(nil), configKeys...)
+	known := make([]string, 0, len(configClasses))
+	for k := range configClasses {
+		known = append(known, k)
+	}
 	sort.Strings(known)
 	return fmt.Errorf("unknown configuration key %q; valid keys: %s", key, strings.Join(known, ", "))
 }
@@ -222,12 +215,21 @@ func loadConfigMap(path string) (map[string]any, error) {
 }
 
 func saveConfigMap(path string, m map[string]any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	// The file holds a session cookie, so it is created readable only by its
+	// owner. Existing files keep whatever mode they already have.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	return os.WriteFile(path, append(data, '\n'), 0644)
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+	// Tighten a file that predates the 0600 default; never widen one that is
+	// already tighter. A failure here is not fatal: the write itself succeeded,
+	// and some platforms have no permission bits to set.
+	_ = os.Chmod(path, 0o600)
+	return nil
 }

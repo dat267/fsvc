@@ -164,7 +164,11 @@ Point at a mock server with `--base-url http://127.0.0.1:PORT` for safe testing.
 
 `config show` masks the session cookie and CSRF token (`<set>`, or `<empty>`
 when blank), so its output is safe to paste into a ticket or a log, and
-`config set` does not echo a secret back. `config set` and `config unset`
+`config set` does not echo a secret back. The file itself is created `0600`
+inside a `0700` directory, and an existing looser file is tightened the next
+time a value is written. A credential setting is declared with a `secret:""` tag on the
+flag in `cmd/root.go` and registered in `configClasses` in `cmd/config.go`;
+a test fails if a new flag is not registered or the two disagree. `config set` and `config unset`
 reject keys the CLI does not read, so a typo like `itildesk_session` fails
 loudly instead of being stored where nothing reads it. A value that starts
 with `-` needs the `--` separator:
