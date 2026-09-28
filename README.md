@@ -1,182 +1,163 @@
 # fsvc
 
-PowerShell module for the Freshservice **private API** (`/api/_/`), authenticated
-with your browser session cookie. It provides ticket triage, ticket content, and
-planned-date hygiene as native commands.
+`fsvc` is a single-binary CLI for the Freshservice private API (`/api/_/`),
+authenticated with a session cookie. Built on
+[Kong](https://github.com/alecthomas/kong) following the scaffold pattern from
+[min](https://github.com/dat267/min).
 
-```powershell
-Install-Module fsvc -Scope CurrentUser
-Import-Module fsvc
-
-Set-FSvcConfig -Subdomain acme -ItildeskSession '<cookie>' -CsrfToken '<token>'
-
-Get-FSvcTicketOverview                              # Category / Subject / Elapsed / Since / Link
-Get-FSvcTicketContent -Id 10100 | Format-FSvcTicketContent
-Update-FSvcPlannedEndDates -WhatIf
-```
-
-> The previous implementations are archived: the Go CLI on `archive/go-cli`, the
-> standalone scripts and installer on `archive/standalone-scripts`.
+One static binary per platform, no runtime dependencies.
 
 ## Install
 
-From the PowerShell Gallery:
-
-```powershell
-Install-Module fsvc -Scope CurrentUser      # PowerShellGet
-Install-PSResource fsvc -Scope CurrentUser  # PSResourceGet
+```sh
+curl -fsSL https://raw.githubusercontent.com/dat267/fsvc/main/install.sh | sh
 ```
 
-Without the Gallery, the same module installs from GitHub — the bootstrap
-copies it into your user module folder, after which PowerShell auto-loads it:
+Installs the latest release into `~/.local/bin`. Override the target with
+`FSVC_INSTALL_DIR`, pin a release with `FSVC_VERSION=v1.0.0`.
 
-```powershell
-# remote one-liner (installs from main)
-irm https://raw.githubusercontent.com/dat267/fsvc/main/Install.ps1 | iex
+### Manual download
 
-# a specific release tag, or refresh an existing install
-pwsh Install.ps1 -Version v1.0.0 -Force
-pwsh Install.ps1 -Ref main -Force
+Pick the asset for your platform from the
+[releases page](https://github.com/dat267/fsvc/releases/latest) and put it on
+`PATH`:
 
-# remove it
-pwsh Install.ps1 -Uninstall
+| Platform | Asset |
+| --- | --- |
+| Linux x86-64 | `fsvc_linux_amd64` |
+| Linux arm64 | `fsvc_linux_arm64` |
+| Linux i386 | `fsvc_linux_386` |
+| macOS Intel | `fsvc_darwin_amd64` |
+| macOS Apple silicon | `fsvc_darwin_arm64` |
+| Windows x86-64 | `fsvc_windows_amd64.exe` |
+| Windows arm64 | `fsvc_windows_arm64.exe` |
+
+```sh
+# Linux / macOS
+curl -fsSL -o fsvc https://github.com/dat267/fsvc/releases/latest/download/fsvc_linux_amd64
+chmod +x fsvc && mv fsvc ~/.local/bin/     # any directory on PATH
+
+# Windows (curl.exe ships with Windows 10+)
+curl.exe -fsSL -o fsvc.exe https://github.com/dat267/fsvc/releases/latest/download/fsvc_windows_amd64.exe
 ```
 
-Or just clone and import, with no install step:
+### From source
 
-```powershell
-Import-Module ./fsvc.psd1
+```sh
+go install github.com/dat267/fsvc@latest
 ```
 
-After any install, `Import-Module fsvc` is optional: because the module lands on
-`PSModulePath`, PowerShell auto-loads it the first time you call one of its
-commands. After an upgrade, an already-open session keeps the old code until
-`Import-Module fsvc -Force` or a new session; after `Install.ps1 -Uninstall`, run
-`Remove-Module fsvc` or open a new session.
+Check it works:
 
-Publishing happens on `v*` tags (`.github/workflows/release.yml`): it runs the
-tests, publishes to the Gallery using the `PSGALLERY_API_KEY` repository secret,
-and attaches a packaged zip to the GitHub release. `Install.ps1 -Version <tag>`
-consumes the tag's source archive.
-
-## Configure
-
-`Set-FSvcConfig` stores settings for the session and **persists them to a small
-JSON file** for future sessions: `%LOCALAPPDATA%\fsvc\config.json` on Windows,
-`~/.config/fsvc/config.json` elsewhere. The effective value is resolved as
-per-call parameter, then session value, then the `FSVC_*` environment variable,
-then the config file.
-
-Within a session, `Set-FSvcConfig` values take precedence; the `FSVC_*`
-environment variables fill anything not set. Passing an empty value clears a
-setting from both the session and the persisted store.
-
-```powershell
-Set-FSvcConfig -Subdomain acme -ItildeskSession '<cookie>' -CsrfToken '<token>'
-Get-FSvcConfig   # shows the effective values (secrets masked)
-Test-FSvcSession # verifies the cookie works
-Set-FSvcConfig -ItildeskSession ''   # clear a persisted setting
+```sh
+fsvc version
+fsvc session    # OK: authenticated (visible tickets: 7)
 ```
 
-`ItildeskSession` and `CsrfToken` are persisted in plaintext, readable by any
-process running as you; clear them when they expire.
+## Quick start
 
-| Setting | Environment variable | Purpose |
-| --- | --- | --- |
-| `Subdomain` | `FSVC_SUBDOMAIN` | e.g. `acme` |
-| `ItildeskSession` | `FSVC_ITILDESK_SESSION` | `_itildesk_session` value |
-| `CsrfToken` | `FSVC_CSRF_TOKEN` | required for writes |
-| `BaseUrl` | `FSVC_BASE_URL` | override the API base URL |
-| `UtcOffset` | `FSVC_UTC_OFFSET` | e.g. `+04:00`; `""` keeps the ticket's offset |
-| `LogPath` | `FSVC_LOG_PATH` | transcript file for write commands |
+Grab the `_itildesk_session` cookie from your browser: F12 → Application →
+Cookies → Freshservice domain → copy the cookie value.
 
-The private API is undocumented and reverse-engineered; see
-[`docs/private-api-notes.md`](docs/private-api-notes.md).
+```bash
+fsvc config set subdomain acme
+fsvc config set itildesk-session "<your _itildesk_session value>"
+
+fsvc session                                # verify
+fsvc tickets classify                       # unresolved tickets in 3 lists
+fsvc tickets list --format json             # raw ticket list
+fsvc tickets conversations 10100            # messages on a ticket
+fsvc ticket-filters show 1100               # show a saved ticket filter
+fsvc users show 2100                        # show a user
+```
+
+### Write commands
+
+Mutations need a CSRF token: grab `X-CSRF-Token` from any POST in the DevTools
+**Network** tab, then store it.
+
+```bash
+fsvc config set csrf-token "4oEDe-..."
+
+fsvc tickets update 10100 status=4                  # resolve a ticket
+fsvc tickets fill-start-dates -y                    # backfill planned_start_date
+fsvc tickets push-end-dates 3 -y                    # bump due dates by 3 business days
+fsvc tickets push-end-dates 3 --within-hours 24 -y  # also push dates due inside 24h
+fsvc tickets sync-priority -y                       # sync priority from urgency+impact
+fsvc tickets sync-urgency-impact -y                 # minimal urgency+impact per priority
+```
+
+Every mutation shows a preview first; `-y`/`--yes` skips the confirmation.
+
+## Config
+
+JSON, resolved as: `$FSVC_CONFIG_FILE` → `./fsvc.json` →
+`~/.config/fsvc/fsvc.json` (Windows: `%AppData%\fsvc\fsvc.json`). Flags and
+environment variables override the file.
+
+| Key | Flag | Env | Purpose |
+| --- | --- | --- | --- |
+| `subdomain` | `--subdomain` | `FSVC_SUBDOMAIN` | e.g. `acme` |
+| `itildesk-session` | `--itildesk-session` | `FSVC_ITILDESK_SESSION` | `_itildesk_session` cookie value |
+| `csrf-token` | `--csrf-token` | `FSVC_CSRF_TOKEN` | CSRF token for write operations |
+| `base-url` | `--base-url` | `FSVC_BASE_URL` | override base URL (default `https://<subdomain>.freshservice.com`) |
+| `time-zone` | `--time-zone` | `FSVC_TZ` | timezone for business-day math (e.g. `Europe/London`) |
+
+`fsvc config init|path|show|set|unset|edit` manage the file. Point at a mock
+server with `--base-url http://127.0.0.1:PORT` for safe testing.
 
 ## Commands
 
-All commands output objects, so use the normal PowerShell pipeline
-(`Format-Table`, `Where-Object`, `ConvertTo-Json`, `Export-Csv`, ...).
+### `fsvc session`
+
+Verify the session cookie: `GET /api/_/tickets?per_page=1`.
+
+### `fsvc tickets`
 
 | Command | Purpose |
 | --- | --- |
-| `Set-FSvcConfig` | Store connection settings for the session |
-| `Get-FSvcConfig` | Show the effective settings (secrets masked) |
-| `Test-FSvcSession` | Verify the session cookie works |
-| `Get-FSvcTicketList` | Tickets by saved-filter id or raw `query_hash` |
-| `Get-FSvcTicketContent` | One ticket plus its conversation trace |
-| `Format-FSvcTicketContent` | Renders that object as readable text |
-| `Get-FSvcTicketOverview` | Triage of your tickets: `waiting`, `awaiting_agent` (`-IncludeUnassigned` adds `unassigned`) |
-| `Set-FSvcPlannedStartDates` | Fill null `planned_start_date` from `created_at` |
-| `Update-FSvcPlannedEndDates` | Set `planned_end_date` to last comment + N business days |
+| `tickets list` | List tickets. `--filter <id>`, `--include`, `--order-by`, `--order-type`, `--page`, `--per-page`, `--format table\|json\|csv` |
+| `tickets conversations <id>` | Conversations for a ticket. `--per-page`, `--include`, `--format` |
+| `tickets classify` | Your unresolved tickets in 3 lists: unassigned, stale agent response, customer responded. `--older-than-days` (business days, default 2), `--query-json`, optional filter ID |
+| `tickets show <id>` | Ticket and conversation trace as Markdown |
+| `tickets export <id>` | Export to DOCX, Markdown, or HTML |
+| `tickets fill-start-dates` | Backfill `planned_start_date` from `created_at` on your unresolved tickets. `-y` |
+| `tickets push-end-dates` | Push `planned_end_date` to now + N business days. `[days]` (default 3), `--within-hours`, `-y` |
+| `tickets sync-priority` | Sync priority from urgency+impact via the standard matrix. `-y` |
+| `tickets sync-urgency-impact` | Set urgency+impact to the minimum pair satisfying the current priority. `-y` |
+| `tickets update <id> key=value...` | Update a ticket. Dotted keys for nested fields, or `--body` for raw JSON |
 
-Examples:
+### Other
 
-```powershell
-Get-FSvcTicketList -FilterId 1100 | Format-Table id, subject, status, priority
-Get-FSvcTicketContent -Id 10100 | ConvertTo-Json -Depth 10
-Get-FSvcTicketOverview -OlderThanDays 2 | Where-Object Category -eq 'waiting'
-```
-`Get-FSvcTicketOverview` covers the tickets assigned to you -- `waiting` and
-`awaiting_agent` -- and leaves unassigned tickets out unless you pass
-`-IncludeUnassigned`. Rows are grouped
-and sorted by `Days` descending within each group. `Days` is a numeric business-day
-count (weekends skipped, holidays not modelled) measured from `Since` -- `created_at`
-for unassigned rows, the last message otherwise. `Since` keeps the account's own UTC
-offset and renders as RFC 3339 (`2026-08-27T11:44:02+04:00`), so it is unaffected by the
-host machine's timezone; `Elapsed` is the same value
-humanized (`13d 14h`, or `1h 30m` below a day). `Unanswered` counts the customer messages an agent has not answered yet (the consecutive incoming run since the last agent message), shown as `-` when there are none or the row is unassigned. `Id` stays a property even though the default view omits it.
-```powershell
-Set-FSvcPlannedStartDates -WhatIf
-Update-FSvcPlannedEndDates -BusinessDays 3 -TargetHour 17 -UtcOffset '+04:00'
+| Command | Purpose |
+| --- | --- |
+| `ticket-filters show <id>` | Show a saved ticket filter |
+| `users show <id>` | Show a user |
+| `version` | Print the build version |
+
+## Build
+
+```bash
+go build -ldflags="-X main.version=$(git describe --tags --always)" -o fsvc .
 ```
 
-## Writing dates
+Releases are built by `.github/workflows/release.yml` on `v*` tags and attached
+to the GitHub release.
 
-The two write commands support `-WhatIf` / `-Confirm` and emit one object per
-change (`Id`, `Field`, `From`, `To`, `Applied`). Runs are serialised with a lock
-file so overlapping calls cannot double-apply, and `-LogPath` records a
-transcript. They default to the `SelfAssigned` view; pass `-View Unassigned` or
-a raw `-QueryHash` to target something else. `Get-FSvcTicketOverview` uses the
-named `SelfAssigned`/`Unassigned` views unless you override its query hashes.
+## Dev
 
-- `Update-FSvcPlannedEndDates` recomputes every scanned ticket to its **last
-  comment + N business days** (private note or public reply, falling back to
-  `created_at`) at `-TargetHour` in `-UtcOffset`. A date that would
-  be in the past is clamped to the nearest future business slot, so the planned
-  end is always in the future; identical dates are skipped.
-- Times are handled as absolute instants and rendered in the account/target
-  offset, so the host machine's timezone never changes the result.
-
-For unattended use, `-Confirm:$false`:
-
-```powershell
-Update-FSvcPlannedEndDates -Confirm:$false -LogPath C:\logs\fsvc.log
+```bash
+go run .
+go test -race -count=1 ./...
+go vet ./...
 ```
 
-## Development
+## API notes
 
-```powershell
-Import-Module ./fsvc.psd1 -Force
-Get-ChildItem tests/*.Tests.ps1 | ForEach-Object { pwsh -NonInteractive -File $_.FullName }
-```
-
-Layout:
-
-- `fsvc.psd1` / `fsvc.psm1` — manifest and loader (`Private`, then `Public`).
-- `Private/` — helpers: config resolution, HTTP, dates, tickets, run lock/log.
-- `Public/` — the exported commands.
-- `tests/` — zero-dependency suites (dot-source `Private` for unit tests;
-  `FSvc.Module.Tests.ps1` validates the manifest and exports).
-
-CI runs the suites on `ubuntu-latest` and `windows-latest`; `v*` tags run the
-release workflow, which publishes to the PowerShell Gallery and attaches the
-packaged module to the GitHub release.
-
-Versioning: `ModuleVersion` in `fsvc.psd1` starts at `0.0.1` and must equal the
-release tag (the workflow refuses a mismatch). Bump **conservatively** — patch
-(`0.0.2`, `0.0.3`, ...) for fixes and small changes, minor for new capabilities,
-major for breaking changes; do not bump for docs or test-only commits.
+This CLI targets the Freshservice **private API** (`/api/_/`), authenticated
+with session cookies (not the public v2 API key). Endpoints and field shapes
+were reverse-engineered; `docs/private-api-notes.md` holds the accumulated
+knowledge.
 
 ## License
 

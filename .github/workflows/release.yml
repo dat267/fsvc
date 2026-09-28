@@ -9,58 +9,51 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [amd64, arm64]
+        include:
+          - os: linux
+            arch: 386
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate module and run tests
-        shell: pwsh
-        run: |
-          Test-ModuleManifest ./fsvc.psd1 | Out-Null
-          $fail = 0
-          foreach ($t in Get-ChildItem tests/*.Tests.ps1) {
-            pwsh -NonInteractive -File $t.FullName
-            if ($LASTEXITCODE -ne 0) { $fail = 1 }
-          }
-          if ($fail -ne 0) { exit 1 }
-
-      - name: Check the tag matches ModuleVersion
-        shell: pwsh
-        run: |
-          $version = (Test-ModuleManifest ./fsvc.psd1).Version.ToString()
-          if ($env:GITHUB_REF_NAME -ne "v$version") {
-            throw "Tag $env:GITHUB_REF_NAME does not match ModuleVersion $version. Bump fsvc.psd1 (and keep the tag in step)."
-          }
-
-      - name: Stage the module
-        shell: pwsh
-        run: |
-          $stage = Join-Path $env:RUNNER_TEMP 'stage/fsvc'
-          New-Item -ItemType Directory -Path $stage -Force | Out-Null
-          Copy-Item fsvc.psd1, fsvc.psm1, fsvc.format.ps1xml -Destination $stage
-          Copy-Item Private, Public -Destination $stage -Recurse
-          Copy-Item LICENSE, README.md -Destination $stage
-          "STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Install PSResourceGet
-        shell: pwsh
-        run: Install-Module Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser
-
-      - name: Publish to the PowerShell Gallery
-        shell: pwsh
-        env:
-          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
-        run: |
-          if (-not $env:PSGALLERY_API_KEY) { throw "Repository secret PSGALLERY_API_KEY is not set." }
-          Publish-PSResource -Path $env:STAGE -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY
-
-      - name: Package the module
-        shell: pwsh
-        run: Compress-Archive -Path $env:STAGE -DestinationPath (Join-Path $env:RUNNER_TEMP 'fsvc.zip') -Force
-
-      - name: Publish the GitHub release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/setup-go@v5
         with:
-          files: ${{ runner.temp }}/fsvc.zip
+          go-version-file: go.mod
+
+      - name: Build binary
+        shell: bash
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          suffix=""
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            suffix=".exe"
+          fi
+          out="dist/fsvc_${{ matrix.os }}_${{ matrix.arch }}${suffix}"
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} CGO_ENABLED=0 \
+            go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "${out}" .
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fsvc_${{ matrix.os }}_${{ matrix.arch }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
           generate_release_notes: true

@@ -1,0 +1,28 @@
+{
+  "conversations": [
+    {
+      "id": 9100,
+      "user_id": 2100,
+      "body_text": "We called the customer to inform them to retry logging in; no answer.",
+      "ticket_id": 10100,
+      "created_at": "2026-07-30T20:41:13+04:00",
+      "updated_at": "2026-07-30T20:41:13+04:00",
+      "incoming": true,
+      "private": false
+    },
+    {
+      "id": 9101,
+      "user_id": 3100,
+      "body_text": "Escalated to Level 2.",
+      "ticket_id": 10100,
+      "created_at": "2026-07-31T09:00:00+04:00",
+      "updated_at": "2026-07-31T09:00:00+04:00",
+      "incoming": false,
+      "private": true
+    }
+  ],
+  "meta": {
+    "count": 2,
+    "has_more": false
+  }
+}

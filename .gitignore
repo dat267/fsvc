@@ -1,3 +1,7 @@
+fsvc
+fsvc.exe
+dist/
 tmp/
 .worktrees/
 har/
+*.har

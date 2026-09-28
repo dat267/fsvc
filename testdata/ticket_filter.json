@@ -1,0 +1,25 @@
+{
+  "ticket_filter": {
+    "id": 1100,
+    "name": "My Open and Pending Tickets",
+    "created_at": "2022-06-15T15:12:27+04:00",
+    "updated_at": "2023-08-09T10:54:17+04:00",
+    "default": false,
+    "visibility": 1,
+    "user_id": 7100,
+    "group_id": null,
+    "query_hash": [
+      {
+        "condition": "status",
+        "operator": "is_in",
+        "value": ["2", "3"],
+        "type": "default"
+      }
+    ],
+    "advanced_query_hash": null,
+    "advanced": false,
+    "order_by": "created_at",
+    "order_type": "desc",
+    "per_page": 30
+  }
+}

@@ -2,6 +2,7 @@ name: test
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -10,22 +11,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate module manifest
-        shell: pwsh
-        run: Test-ModuleManifest ./fsvc.psd1 | Out-Null
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
-      - name: Run tests
-        shell: pwsh
-        run: |
-          $fail = 0
-          foreach ($t in Get-ChildItem tests/*.Tests.ps1) {
-            Write-Host "== $($t.Name) =="
-            pwsh -NonInteractive -File $t.FullName
-            if ($LASTEXITCODE -ne 0) { $fail = 1 }
-          }
-          if ($fail -ne 0) { exit 1 }
-          Write-Host "All suites passed."
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test (race detector)
+        if: runner.os == 'Linux'
+        run: go test -race -count=1 ./...
+
+      - name: Test
+        if: runner.os != 'Linux'
+        run: go test -count=1 ./...
