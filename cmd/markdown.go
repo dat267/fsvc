@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -69,7 +68,9 @@ func assetRelPath(img exportImage) string {
 	if !strings.Contains(name, ".") {
 		name += "." + ext
 	}
-	return filepath.Join("assets", name)
+	// Always forward slashes: this string is both the link target in the
+	// markdown and, via writeAssets, a path relative to the output file.
+	return "assets/" + name
 }
 
 func markdownImage(img exportImage) string {
