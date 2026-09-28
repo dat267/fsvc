@@ -86,7 +86,7 @@ func TestClassifyConcurrencyBoundsInFlight(t *testing.T) {
 	defer srv.Close()
 
 	captureStdout(t, func() {
-		if err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
+		if err := (&TicketsOverviewCmd{OlderThanDays: 1, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -125,7 +125,7 @@ func TestClassifyConcurrencyOneRunsSequentially(t *testing.T) {
 	defer srv.Close()
 
 	captureStdout(t, func() {
-		if err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
+		if err := (&TicketsOverviewCmd{OlderThanDays: 1, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -136,90 +136,6 @@ func TestClassifyConcurrencyOneRunsSequentially(t *testing.T) {
 	}
 	if max != 1 {
 		t.Errorf("expected strictly sequential fetches with --concurrency 1, saw %d in flight", max)
-	}
-}
-
-func TestGatherMediaConcurrencyBoundsInFlight(t *testing.T) {
-	setConcurrency(t, 2)
-
-	const images = 6
-	track := &inflightTracker{delay: 25 * time.Millisecond}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/img", func(w http.ResponseWriter, r *http.Request) {
-		track.handler(w, r)
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(pngSig)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	doc := &exportDoc{Conversations: make([]conversationDoc, images)}
-	for i := range doc.Conversations {
-		doc.Conversations[i] = conversationDoc{
-			ID:       fmt.Sprintf("%d", i),
-			BodyHTML: fmt.Sprintf(`<img src="/img?i=%d">`, i),
-		}
-	}
-
-	if err := gatherMedia(context.Background(), newTestClient(srv.URL), doc); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	max, total := track.stats()
-	if total != images {
-		t.Errorf("expected %d image downloads, got %d", images, total)
-	}
-	if max > 2 {
-		t.Errorf("expected at most 2 in-flight downloads, saw %d", max)
-	}
-	if max < 2 {
-		t.Errorf("expected downloads to run in parallel, max in-flight was %d", max)
-	}
-	// Concurrent downloads must still yield a stable, request-ordered result.
-	if len(doc.Images) != images {
-		t.Fatalf("expected %d images, got %d", images, len(doc.Images))
-	}
-	for i, img := range doc.Images {
-		if want := fmt.Sprintf("i=%d", i); !strings.HasSuffix(img.ID, want) {
-			t.Errorf("image %d: expected an ID ending in %q, got %q", i, want, img.ID)
-		}
-	}
-}
-
-func TestGatherMediaConcurrencyOneRunsSequentially(t *testing.T) {
-	setConcurrency(t, 1)
-
-	const images = 3
-	track := &inflightTracker{delay: 10 * time.Millisecond}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/img", func(w http.ResponseWriter, r *http.Request) {
-		track.handler(w, r)
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(pngSig)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	doc := &exportDoc{Ticket: map[string]any{"id": 1}}
-	for i := 0; i < images; i++ {
-		doc.Conversations = append(doc.Conversations, conversationDoc{
-			ID:       fmt.Sprintf("%d", i),
-			BodyHTML: fmt.Sprintf(`<img src="/img?i=%d">`, i),
-		})
-	}
-
-	if err := gatherMedia(context.Background(), newTestClient(srv.URL), doc); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	max, total := track.stats()
-	if total != images {
-		t.Errorf("expected %d image downloads, got %d", images, total)
-	}
-	if max != 1 {
-		t.Errorf("expected strictly sequential downloads with --concurrency 1, saw %d in flight", max)
 	}
 }
 

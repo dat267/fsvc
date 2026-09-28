@@ -63,7 +63,7 @@ func BenchmarkClassifyConversationScan(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				discardStdout(func() {
-					if err := (&TicketsClassifyCmd{OlderThanDays: olderDays, Page: 1, PerPage: 100}).Run(context.Background(), client); err != nil {
+					if err := (&TicketsOverviewCmd{OlderThanDays: olderDays, Page: 1, PerPage: 100}).Run(context.Background(), client); err != nil {
 						b.Fatalf("unexpected error: %v", err)
 					}
 				})

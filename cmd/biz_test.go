@@ -73,44 +73,6 @@ func TestBusinessDaysBetween(t *testing.T) {
 	}
 }
 
-func TestMinUrgencyImpactForPriority(t *testing.T) {
-	tests := []struct {
-		priority int
-		wantU, I int
-		wantOK   bool
-	}{
-		{1, 1, 1, true},
-		{2, 3, 1, true},
-		{3, 3, 2, true},
-		{4, 3, 3, true},
-		{5, 0, 0, false},
-	}
-	for _, tt := range tests {
-		u, i, ok := MinUrgencyImpactForPriority(tt.priority)
-		if u != tt.wantU || i != tt.I || ok != tt.wantOK {
-			t.Errorf("MinUrgencyImpactForPriority(%d) = %d,%d,%v want %d,%d,%v", tt.priority, u, i, ok, tt.wantU, tt.I, tt.wantOK)
-		}
-	}
-}
-
-func TestPriorityFor(t *testing.T) {
-	if PriorityFor(3, 3) != 4 {
-		t.Error("urgency 3 impact 3 should be priority 4")
-	}
-	if PriorityFor(1, 3) != 2 {
-		t.Error("urgency 1 impact 3 should be priority 2")
-	}
-	if PriorityFor(3, 1) != 2 {
-		t.Error("urgency 3 impact 1 should be priority 2")
-	}
-	if PriorityFor(0, 0) != 0 {
-		t.Error("urgency 0 impact 0 should return 0")
-	}
-	if PriorityFor(4, 1) != 0 {
-		t.Error("urgency 4 impact 1 should return 0")
-	}
-}
-
 func TestClassify(t *testing.T) {
 	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC) // Tuesday
 	created := now.Add(-72 * time.Hour)                 // Saturday

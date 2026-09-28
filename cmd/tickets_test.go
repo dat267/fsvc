@@ -28,155 +28,11 @@ func loadFixture(t *testing.T, name string) []byte {
 	return data
 }
 
-func serveFixture(t *testing.T, name string, check func(*http.Request)) *httptest.Server {
-	t.Helper()
-	body := loadFixture(t, name)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if check != nil {
-			check(r)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
-
 func newTestClient(serverURL string) *Client {
 	return New(ClientConfig{BaseURL: serverURL, ItildeskSession: "abc"})
 }
 
-func TestTicketsListCmd_Table(t *testing.T) {
-	srv := serveFixture(t, "tickets.json", func(r *http.Request) {
-		if r.URL.Path != "/api/_/tickets" {
-			t.Errorf("expected path /api/_/tickets, got %s", r.URL.Path)
-		}
-		if r.URL.Query().Get("per_page") != "30" {
-			t.Errorf("expected default per_page=30, got %v", r.URL.Query())
-		}
-		if r.URL.Query().Get("order_type") != "asc" {
-			t.Errorf("expected default order_type=asc, got %v", r.URL.Query())
-		}
-	})
-
-	out := captureStdout(t, func() {
-		err := (&TicketsListCmd{OrderBy: "created_at", OrderType: "asc", Page: 1, PerPage: 30}).Run(context.Background(), newTestClient(srv.URL))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	if !strings.Contains(out, "| ID    | Subject") {
-		t.Errorf("expected table header, got:\n%s", out)
-	}
-	// Status/priority columns render names, matching `tickets show`.
-	for _, want := range []string{"Open", "Resolved", "Low", "Medium", "High"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %q in list output:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "| 2 ") || strings.Contains(out, "| 4 ") {
-		t.Errorf("expected no raw status/priority numbers:\n%s", out)
-	}
-	if !strings.Contains(out, "Omar Saleh") {
-		t.Errorf("expected nested requester name in output:\n%s", out)
-	}
-	if !strings.Contains(out, "10100") {
-		t.Errorf("expected ticket id in output:\n%s", out)
-	}
-}
-
-func TestTicketsListCmd_JSONFormat(t *testing.T) {
-	srv := serveFixture(t, "tickets.json", nil)
-	out := captureStdout(t, func() {
-		err := (&TicketsListCmd{Format: "json"}).Run(context.Background(), newTestClient(srv.URL))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-	if !strings.Contains(out, `"subject"`) {
-		t.Errorf("expected raw JSON output:\n%s", out)
-	}
-}
-
-func TestTicketsListCmd_CSVFormat(t *testing.T) {
-	srv := serveFixture(t, "tickets.json", nil)
-	out := captureStdout(t, func() {
-		err := (&TicketsListCmd{Format: "csv"}).Run(context.Background(), newTestClient(srv.URL))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-	if !strings.HasPrefix(out, "ID,Subject") {
-		t.Errorf("expected CSV header, got:\n%s", out)
-	}
-}
-
-func TestTicketsListCmd_QueryParams(t *testing.T) {
-	srv := serveFixture(t, "tickets.json", func(r *http.Request) {
-		q := r.URL.Query()
-		if q.Get("filter") != "1100" {
-			t.Errorf("expected filter=1100, got %v", q)
-		}
-		if q.Get("include") != "stats,responder" {
-			t.Errorf("expected include=stats,responder, got %v", q)
-		}
-		if q.Get("order_by") != "updated_at" {
-			t.Errorf("expected order_by=updated_at, got %v", q)
-		}
-		if q.Get("order_type") != "asc" {
-			t.Errorf("expected order_type=asc, got %v", q)
-		}
-		if q.Get("page") != "2" {
-			t.Errorf("expected page=2, got %v", q)
-		}
-		if q.Get("per_page") != "50" {
-			t.Errorf("expected per_page=50, got %v", q)
-		}
-	})
-
-	cmd := &TicketsListCmd{
-		Filter:    1100,
-		Include:   "stats,responder",
-		OrderBy:   "updated_at",
-		OrderType: "asc",
-		Page:      2,
-		PerPage:   50,
-	}
-	if err := cmd.Run(context.Background(), newTestClient(srv.URL)); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestTicketsConvCmd(t *testing.T) {
-	srv := serveFixture(t, "conversations.json", func(r *http.Request) {
-		if r.URL.Path != "/api/_/tickets/10100/conversations" {
-			t.Errorf("expected conversations path, got %s", r.URL.Path)
-		}
-		if r.URL.Query().Get("per_page") != "3" {
-			t.Errorf("expected per_page=3, got %v", r.URL.Query())
-		}
-		if r.URL.Query().Get("order_by") != "created_at" {
-			t.Errorf("expected order_by=created_at, got %v", r.URL.Query())
-		}
-		if r.URL.Query().Get("order_type") != "asc" {
-			t.Errorf("expected order_type=asc, got %v", r.URL.Query())
-		}
-	})
-
-	out := captureStdout(t, func() {
-		err := (&TicketsConvCmd{ID: 10100, PerPage: 3}).Run(context.Background(), newTestClient(srv.URL))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	if !strings.Contains(out, "We called the customer") {
-		t.Errorf("expected conversation body_text in output:\n%s", out)
-	}
-}
-
-func TestTicketsClassifyCmd(t *testing.T) {
+func TestTicketsOverviewCmd(t *testing.T) {
 	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +68,7 @@ func TestTicketsClassifyCmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsClassifyCmd{OlderThanDays: 1, PerPage: 100, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsOverviewCmd{OlderThanDays: 1, PerPage: 100, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -238,7 +94,7 @@ func TestTicketsClassifyCmd(t *testing.T) {
 	}
 }
 
-func TestTicketsClassifyCmd_QueryJSON(t *testing.T) {
+func TestTicketsOverviewCmd_QueryJSON(t *testing.T) {
 	var gotQuery url.Values
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -253,7 +109,7 @@ func TestTicketsClassifyCmd_QueryJSON(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	err := (&TicketsClassifyCmd{QueryJSON: `{"filter":"123","query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+	err := (&TicketsOverviewCmd{QueryJSON: `{"filter":"123","query_hash":[{"condition":"status","operator":"is","value":0,"type":"default"}]}`, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,7 +130,7 @@ func TestTicketsClassifyCmd_QueryJSON(t *testing.T) {
 	}
 }
 
-func TestTicketsClassifyCmd_CustomFilterSingleFetch(t *testing.T) {
+func TestTicketsOverviewCmd_CustomFilterSingleFetch(t *testing.T) {
 	fetchCount := 0
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -289,7 +145,7 @@ func TestTicketsClassifyCmd_CustomFilterSingleFetch(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	cmd := &TicketsClassifyCmd{Filter: 123, Page: 1, PerPage: 100}
+	cmd := &TicketsOverviewCmd{Filter: 123, Page: 1, PerPage: 100}
 	err := cmd.Run(context.Background(), newTestClient(srv.URL))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -300,7 +156,7 @@ func TestTicketsClassifyCmd_CustomFilterSingleFetch(t *testing.T) {
 	}
 }
 
-func TestTicketsClassifyCmd_Pagination(t *testing.T) {
+func TestTicketsOverviewCmd_Pagination(t *testing.T) {
 	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
 	var mu sync.Mutex
 	calls := 0
@@ -328,7 +184,7 @@ func TestTicketsClassifyCmd_Pagination(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 1, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsOverviewCmd{OlderThanDays: 1, Page: 1, PerPage: 1, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -555,256 +411,6 @@ func TestTicketsPushEndDatesCmd_EndHour(t *testing.T) {
 	}
 }
 
-func TestTicketsListCmd_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprint(w, `{"errors":["boom"]}`)
-	}))
-	defer srv.Close()
-
-	err := (&TicketsListCmd{}).Run(context.Background(), newTestClient(srv.URL))
-	if err == nil || !strings.Contains(err.Error(), "HTTP 500") {
-		t.Errorf("expected HTTP 500 error, got %v", err)
-	}
-}
-
-func TestTicketsUpdateCmd_Pairs(t *testing.T) {
-	var gotBody []byte
-	var gotCSRF string
-
-	srv := serveFixture(t, "put_ticket.json", func(r *http.Request) {
-		if r.Method != http.MethodPut {
-			t.Errorf("expected PUT, got %s", r.Method)
-		}
-		if r.URL.Path != "/api/_/tickets/10100" {
-			t.Errorf("expected path /api/_/tickets/10100, got %s", r.URL.Path)
-		}
-		if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-			t.Errorf("expected application/json content type, got %q", ct)
-		}
-		gotCSRF = r.Header.Get("X-CSRF-Token")
-		var err error
-		gotBody, err = io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("failed to read request body: %v", err)
-		}
-	})
-
-	out := captureStdout(t, func() {
-		cmd := &TicketsUpdateCmd{
-			ID:    10100,
-			Pairs: []string{"priority=1", "group_id=4001", "custom_fields.type_of_ticket_received=Duplicate"},
-		}
-		client := newTestClient(srv.URL)
-		client.csrf = "tok123"
-		if err := cmd.Run(context.Background(), client); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	if gotCSRF != "tok123" {
-		t.Errorf("expected X-CSRF-Token tok123, got %q", gotCSRF)
-	}
-	wantBody := `{"custom_fields":{"type_of_ticket_received":"Duplicate"},"group_id":4001,"priority":1}`
-	if string(gotBody) != wantBody {
-		t.Errorf("expected body %s, got %s", wantBody, gotBody)
-	}
-	if !strings.Contains(out, "10100") {
-		t.Errorf("expected updated ticket id in output:\n%s", out)
-	}
-}
-
-func TestTicketsUpdateCmd_RawBody(t *testing.T) {
-	var gotBody []byte
-
-	srv := serveFixture(t, "put_ticket.json", func(r *http.Request) {
-		var err error
-		gotBody, err = io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("failed to read request body: %v", err)
-		}
-	})
-
-	raw := `{"priority":1,"br_validation_excludes":"eyJhbGciOiJIUzI1NiJ9.eyJvcHRpb25hbCI6W119"}`
-	err := (&TicketsUpdateCmd{
-		ID:    10100,
-		Body:  raw,
-		Pairs: []string{"priority=9"},
-	}).Run(context.Background(), newTestClient(srv.URL))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if string(gotBody) != raw {
-		t.Errorf("expected verbatim body %s, got %s", raw, gotBody)
-	}
-}
-
-func TestTicketsUpdateCmd_NothingToUpdate(t *testing.T) {
-	srv := serveFixture(t, "put_ticket.json", nil)
-	err := (&TicketsUpdateCmd{ID: 10100}).Run(context.Background(), newTestClient(srv.URL))
-	if err == nil || !strings.Contains(err.Error(), "nothing to update") {
-		t.Errorf("expected 'nothing to update' error, got %v", err)
-	}
-}
-
-func TestTicketsUpdateCmd_InvalidBody(t *testing.T) {
-	srv := serveFixture(t, "put_ticket.json", nil)
-	err := (&TicketsUpdateCmd{ID: 10100, Body: "not json"}).Run(context.Background(), newTestClient(srv.URL))
-	if err == nil || !strings.Contains(err.Error(), "invalid JSON") {
-		t.Errorf("expected invalid JSON error, got %v", err)
-	}
-}
-
-func TestTicketsUpdateCmd_InvalidPair(t *testing.T) {
-	srv := serveFixture(t, "put_ticket.json", nil)
-	err := (&TicketsUpdateCmd{ID: 10100, Pairs: []string{"noequals"}}).Run(context.Background(), newTestClient(srv.URL))
-	if err == nil {
-		t.Error("expected error for invalid pair")
-	}
-}
-
-func TestTicketsSyncUrgencyImpactCmd(t *testing.T) {
-	var putCalls []struct {
-		Path string
-		Body []byte
-	}
-	var putMu sync.Mutex
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"priority":2,"urgency":2,"impact":2},{"id":20,"priority":3,"urgency":1,"impact":1},{"id":30,"priority":4,"urgency":3,"impact":3}],"meta":{"has_next":false}}`)
-	})
-	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":2,"urgency":2,"impact":2}}`)
-		} else {
-			b, _ := io.ReadAll(r.Body)
-			putMu.Lock()
-			putCalls = append(putCalls, struct {
-				Path string
-				Body []byte
-			}{Path: r.URL.Path, Body: b})
-			putMu.Unlock()
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
-		}
-	})
-	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
-		// priority 3, urgency=1 impact=1 -> target (3,2)
-		if r.Method == http.MethodGet {
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"priority":3,"urgency":1,"impact":1}}`)
-		} else {
-			b, _ := io.ReadAll(r.Body)
-			putMu.Lock()
-			putCalls = append(putCalls, struct {
-				Path string
-				Body []byte
-			}{Path: r.URL.Path, Body: b})
-			putMu.Unlock()
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":20}}`)
-		}
-	})
-	mux.HandleFunc("/api/_/tickets/30", func(w http.ResponseWriter, r *http.Request) {
-		// priority 4, urgency=3 impact=3 -> already correct, skip
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"priority":4,"urgency":3,"impact":3}}`)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	out := captureStdout(t, func() {
-		err := (&TicketsSyncUrgencyImpactCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	if !strings.Contains(out, "[priority=2] ticket 10: urgency=2 impact=2 -> urgency=3 impact=1") {
-		t.Errorf("expected ticket 10 preview, got %q", out)
-	}
-	if !strings.Contains(out, "[priority=3] ticket 20: urgency=1 impact=1 -> urgency=3 impact=2") {
-		t.Errorf("expected ticket 20 preview, got %q", out)
-	}
-	if strings.Contains(out, "ticket 30") {
-		t.Errorf("ticket 30 should not appear, got %q", out)
-	}
-	if len(putCalls) != 2 {
-		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
-	}
-	if !strings.Contains(out, "Done: 2 applied") {
-		t.Errorf("expected summary, got %q", out)
-	}
-}
-
-func TestTicketsSyncPriorityCmd(t *testing.T) {
-	var putCalls []struct {
-		Path string
-		Body []byte
-	}
-	var putMu sync.Mutex
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"priority":2,"urgency":3,"impact":3},{"id":20,"priority":2,"urgency":2,"impact":2},{"id":30,"priority":3,"urgency":3,"impact":1}],"meta":{"has_next":false}}`)
-	})
-	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10,"priority":2,"urgency":3,"impact":3}}`)
-		} else {
-			b, _ := io.ReadAll(r.Body)
-			putMu.Lock()
-			putCalls = append(putCalls, struct {
-				Path string
-				Body []byte
-			}{Path: r.URL.Path, Body: b})
-			putMu.Unlock()
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
-		}
-	})
-	mux.HandleFunc("/api/_/tickets/20", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":20,"priority":2,"urgency":2,"impact":2}}`)
-	})
-	mux.HandleFunc("/api/_/tickets/30", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":30,"priority":3,"urgency":3,"impact":1}}`)
-		} else {
-			b, _ := io.ReadAll(r.Body)
-			putMu.Lock()
-			putCalls = append(putCalls, struct {
-				Path string
-				Body []byte
-			}{Path: r.URL.Path, Body: b})
-			putMu.Unlock()
-			_, _ = fmt.Fprint(w, `{"ticket":{"id":30}}`)
-		}
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	out := captureStdout(t, func() {
-		err := (&TicketsSyncPriorityCmd{Yes: true, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	if !strings.Contains(out, "[urgency=3 impact=3] ticket 10: priority=2 -> priority=4") {
-		t.Errorf("expected ticket 10 preview, got %q", out)
-	}
-	if !strings.Contains(out, "[urgency=3 impact=1] ticket 30: priority=3 -> priority=2") {
-		t.Errorf("expected ticket 30 preview, got %q", out)
-	}
-	if strings.Contains(out, "ticket 20") {
-		t.Errorf("ticket 20 should not appear, got %q", out)
-	}
-	if len(putCalls) != 2 {
-		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
-	}
-	if !strings.Contains(out, "Done: 2 applied") {
-		t.Errorf("expected summary, got %q", out)
-	}
-}
-
 func TestTicketQueryList_SelfAssignedView(t *testing.T) {
 	var got url.Values
 	var calls int
@@ -1010,9 +616,9 @@ func TestTicketLocation(t *testing.T) {
 	}
 }
 
-// classifyFixture serves one unassigned ticket plus two self-assigned ones and
+// overviewFixture serves one unassigned ticket plus two self-assigned ones and
 // counts how many times the unassigned view is fetched.
-func classifyFixture(t *testing.T) (*httptest.Server, *int) {
+func overviewFixture(t *testing.T) (*httptest.Server, *int) {
 	t.Helper()
 	unassignedFetches := 0
 	mux := http.NewServeMux()
@@ -1034,12 +640,12 @@ func classifyFixture(t *testing.T) (*httptest.Server, *int) {
 	return srv, &unassignedFetches
 }
 
-func TestTicketsClassifyCmd_SkipsUnassignedByDefault(t *testing.T) {
+func TestTicketsOverviewCmd_SkipsUnassignedByDefault(t *testing.T) {
 	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
-	srv, unassignedFetches := classifyFixture(t)
+	srv, unassignedFetches := overviewFixture(t)
 
 	out := captureStdout(t, func() {
-		if err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
+		if err := (&TicketsOverviewCmd{OlderThanDays: 1, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1058,12 +664,12 @@ func TestTicketsClassifyCmd_SkipsUnassignedByDefault(t *testing.T) {
 	}
 }
 
-func TestTicketsClassifyCmd_IncludeUnassigned(t *testing.T) {
+func TestTicketsOverviewCmd_IncludeUnassigned(t *testing.T) {
 	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
-	srv, unassignedFetches := classifyFixture(t)
+	srv, unassignedFetches := overviewFixture(t)
 
 	out := captureStdout(t, func() {
-		if err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 100, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
+		if err := (&TicketsOverviewCmd{OlderThanDays: 1, Page: 1, PerPage: 100, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -1082,16 +688,16 @@ func TestTicketsClassifyCmd_IncludeUnassigned(t *testing.T) {
 	}
 }
 
-func TestTicketsClassifyCmd_IncludeUnassignedFlagBinds(t *testing.T) {
+func TestTicketsOverviewCmd_IncludeUnassignedFlagBinds(t *testing.T) {
 	var cli CLI
 	parser, err := kong.New(&cli)
 	if err != nil {
 		t.Fatalf("kong.New: %v", err)
 	}
-	if _, err := parser.Parse([]string{"tickets", "classify"}); err != nil {
+	if _, err := parser.Parse([]string{"tickets", "overview"}); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if cli.Tickets.Classify.IncludeUnassigned {
+	if cli.Tickets.Overview.IncludeUnassigned {
 		t.Error("expected --include-unassigned to be off by default")
 	}
 
@@ -1100,10 +706,10 @@ func TestTicketsClassifyCmd_IncludeUnassignedFlagBinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("kong.New: %v", err)
 	}
-	if _, err := customParser.Parse([]string{"tickets", "classify", "--include-unassigned"}); err != nil {
+	if _, err := customParser.Parse([]string{"tickets", "overview", "--include-unassigned"}); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if !custom.Tickets.Classify.IncludeUnassigned {
+	if !custom.Tickets.Overview.IncludeUnassigned {
 		t.Error("expected --include-unassigned to bind")
 	}
 }

@@ -1,11 +1,15 @@
 # fsvc
 
 `fsvc` is a single-binary CLI for the Freshservice private API (`/api/_/`),
-authenticated with a session cookie. Built on
-[Kong](https://github.com/alecthomas/kong) following the scaffold pattern from
-[min](https://github.com/dat267/min).
+authenticated with a session cookie. It does three things:
 
-One static binary per platform, no runtime dependencies.
+- `tickets overview` — your unresolved tickets, split into *waiting on
+  customer* and *awaiting agent*
+- `tickets fill-start-dates` — autofill `planned_start_date` from `created_at`
+- `tickets push-end-dates` — update `planned_end_date` to now + N business days
+
+Built on [Kong](https://github.com/alecthomas/kong). One static binary per
+platform, no runtime dependencies.
 
 ## Install
 
@@ -54,7 +58,7 @@ fsvc version
 fsvc session    # OK: authenticated (visible tickets: 7)
 ```
 
-## Quick start
+## Setup
 
 Grab the `_itildesk_session` cookie from your browser: F12 → Application →
 Cookies → Freshservice domain → copy the cookie value.
@@ -62,33 +66,93 @@ Cookies → Freshservice domain → copy the cookie value.
 ```bash
 fsvc config set subdomain acme
 fsvc config set itildesk-session "<your _itildesk_session value>"
-
-fsvc session                                # verify
-fsvc tickets classify                       # your unresolved tickets, 2 lists
-fsvc tickets classify --include-unassigned  # + the unassigned backlog
-fsvc tickets list --format json             # raw ticket list
-fsvc tickets conversations 10100            # messages on a ticket
-fsvc ticket-filters show 1100               # show a saved ticket filter
-fsvc users show 2100                        # show a user
+fsvc session
 ```
 
-### Write commands
-
 Mutations need a CSRF token: grab `X-CSRF-Token` from any POST in the DevTools
-**Network** tab, then store it.
+**Network** tab and store it.
 
 ```bash
 fsvc config set csrf-token "4oEDe-..."
-
-fsvc tickets update 10100 status=4                  # resolve a ticket
-fsvc tickets fill-start-dates -y                    # backfill planned_start_date
-fsvc tickets push-end-dates 3 -y                    # bump due dates by 3 business days
-fsvc tickets push-end-dates 3 --within-hours 24 -y  # also push dates due inside 24h
-fsvc tickets sync-priority -y                       # sync priority from urgency+impact
-fsvc tickets sync-urgency-impact -y                 # minimal urgency+impact per priority
 ```
 
-Every mutation shows a preview first; `-y`/`--yes` skips the confirmation.
+Business-day math follows `--time-zone` (an IANA name); without it the account
+timezone is inferred from the ticket dates.
+
+## Commands
+
+### `fsvc tickets overview`
+
+Your unresolved tickets in two lists: *waiting on customer* (last message is
+yours and the customer has not replied for `--older-than-days` business days,
+default 2) and *awaiting agent* (the last message is theirs).
+
+```bash
+fsvc tickets overview
+fsvc tickets overview --older-than-days 5
+fsvc tickets overview --include-unassigned     # + the unassigned backlog
+fsvc tickets overview --query-json '{"filter":"123"}'
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--older-than-days` | Business days waiting on the customer before flagging (default 2) |
+| `--include-unassigned` | Also list unassigned tickets (not your queue; costs one extra request) |
+| `--query-json` | Raw JSON query params for the tickets endpoint |
+| `[filter]` | Optional ticket filter/view ID positional argument |
+| `--page`, `--per-page` | Paging for the underlying list calls |
+
+### `fsvc tickets fill-start-dates`
+
+Backfill `planned_start_date` from `created_at` (rounded up to the next quarter
+hour) on your unresolved tickets that have none.
+
+```bash
+fsvc tickets fill-start-dates         # preview, then confirm
+fsvc tickets fill-start-dates -y      # skip the confirmation prompt
+```
+
+### `fsvc tickets push-end-dates`
+
+Set `planned_end_date` to now + N business days on your unresolved tickets.
+
+```bash
+fsvc tickets push-end-dates 3                     # preview, then confirm
+fsvc tickets push-end-dates 3 -y                   # skip the prompt
+fsvc tickets push-end-dates 3 --within-hours 24    # also push dates due inside 24h
+fsvc tickets push-end-dates 3 --end-hour 17        # land on a preferred hour
+```
+
+### Other
+
+| Command | Purpose |
+| --- | --- |
+| `fsvc session` | Verify the session cookie |
+| `fsvc config path\|show\|set\|unset` | Manage the configuration file |
+| `fsvc version` | Print the build version |
+
+Every mutation previews the changes first (`[field] ticket <id>: <from> -> <to>`)
+and asks for confirmation; `-y`/`--yes` skips it.
+
+## Concurrency
+
+The per-ticket conversation scan behind `tickets overview` and the batch PUTs
+behind the two date commands run on a bounded worker pool, 8 requests in
+flight by default. `--concurrency N` (`FSVC_CONCURRENCY`) changes it;
+`--concurrency 1` forces strictly sequential requests.
+
+Against a mock server holding each request for 10 ms, a 24-ticket scan scales
+almost linearly:
+
+| workers | wall time | speedup |
+| --- | --- | --- |
+| 1 | 268 ms | 1.0x |
+| 2 | 132 ms | 2.0x |
+| 4 | 66 ms | 4.1x |
+| 8 | 34 ms | 7.8x |
+| 16 | 25 ms | 10.8x |
+
+Reproduce: `go test -run XXX -bench BenchmarkClassifyConversationScan ./cmd/`.
 
 ## Config
 
@@ -105,63 +169,7 @@ environment variables override the file.
 | `time-zone` | `--time-zone` | `FSVC_TZ` | timezone for business-day math (e.g. `Europe/London`) |
 | `concurrency` | `--concurrency` | `FSVC_CONCURRENCY` | max in-flight requests (default 8) |
 
-`fsvc config init|path|show|set|unset|edit` manage the file. Point at a mock
-server with `--base-url http://127.0.0.1:PORT` for safe testing.
-
-## Concurrency
-
-Fanned-out work runs on a bounded worker pool:
-
-- the per-ticket conversation scan in `tickets classify`
-- the batch PUTs behind `fill-start-dates`, `push-end-dates`, `sync-priority`
-  and `sync-urgency-impact`
-- image downloads during `tickets export` and `tickets show`
-
-The default is 8 in-flight requests. `--concurrency N` (`FSVC_CONCURRENCY`)
-changes it; `--concurrency 1` forces strictly sequential requests. Downloads
-keep request order, so concurrent exports are still deterministic.
-
-Against a mock server holding each request for 10 ms, the 24-ticket scan
-scales almost linearly:
-
-| workers | wall time | speedup |
-| --- | --- | --- |
-| 1 | 268 ms | 1.0x |
-| 2 | 132 ms | 2.0x |
-| 4 | 66 ms | 4.1x |
-| 8 | 34 ms | 7.8x |
-| 16 | 25 ms | 10.8x |
-
-Reproduce: `go test -run XXX -bench BenchmarkClassifyConversationScan ./cmd/`.
-
-## Commands
-
-### `fsvc session`
-
-Verify the session cookie: `GET /api/_/tickets?per_page=1`.
-
-### `fsvc tickets`
-
-| Command | Purpose |
-| --- | --- |
-| `tickets list` | List tickets. `--filter <id>`, `--include`, `--order-by`, `--order-type`, `--page`, `--per-page`, `--format table\|json\|csv` |
-| `tickets conversations <id>` | Conversations for a ticket. `--per-page`, `--include`, `--format` |
-| `tickets classify` | Your unresolved tickets in two lists: stale agent response, customer responded. `--include-unassigned` adds the unassigned backlog (one extra request); `--older-than-days` (business days, default 2), `--query-json`, optional filter ID |
-| `tickets show <id>` | Ticket and conversation trace as Markdown |
-| `tickets export <id>` | Export to DOCX, Markdown, or HTML |
-| `tickets fill-start-dates` | Backfill `planned_start_date` from `created_at` on your unresolved tickets. `-y` |
-| `tickets push-end-dates` | Push `planned_end_date` to now + N business days. `[days]` (default 3), `--within-hours`, `-y` |
-| `tickets sync-priority` | Sync priority from urgency+impact via the standard matrix. `-y` |
-| `tickets sync-urgency-impact` | Set urgency+impact to the minimum pair satisfying the current priority. `-y` |
-| `tickets update <id> key=value...` | Update a ticket. Dotted keys for nested fields, or `--body` for raw JSON |
-
-### Other
-
-| Command | Purpose |
-| --- | --- |
-| `ticket-filters show <id>` | Show a saved ticket filter |
-| `users show <id>` | Show a user |
-| `version` | Print the build version |
+Point at a mock server with `--base-url http://127.0.0.1:PORT` for safe testing.
 
 ## Build
 

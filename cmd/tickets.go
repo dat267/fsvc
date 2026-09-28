@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -15,92 +14,12 @@ import (
 )
 
 type TicketsCmdGroup struct {
-	List              TicketsListCmd              `cmd:"" help:"List tickets"`
-	Show              TicketsShowCmd              `cmd:"" help:"Show a ticket and its conversation trace as Markdown"`
-	Conversations     TicketsConvCmd              `cmd:"" help:"List conversations for a ticket"`
-	Export            TicketsExportCmd            `cmd:"" help:"Export a ticket to DOCX, Markdown, or HTML"`
-	Classify          TicketsClassifyCmd          `cmd:"" help:"Categorize tickets into unassigned / awaiting agent / awaiting customer"`
-	FillStartDates    TicketsFillStartDatesCmd    `cmd:"" help:"Backfill planned_start_date from created_at on your unresolved tickets"`
-	PushEndDates      TicketsPushEndDatesCmd      `cmd:"" help:"Push planned_end_date to now + N days on your unresolved tickets"`
-	SyncPriority      TicketsSyncPriorityCmd      `cmd:"" help:"Sync priority from urgency+impact via standard matrix"`
-	SyncUrgencyImpact TicketsSyncUrgencyImpactCmd `cmd:"" help:"Set urgency+impact to the minimum pair that satisfies the current priority"`
-	Update            TicketsUpdateCmd            `cmd:"" help:"Update a ticket"`
+	Overview       TicketsOverviewCmd       `cmd:"" help:"Overview of your unresolved tickets: awaiting agent, waiting on customer"`
+	FillStartDates TicketsFillStartDatesCmd `cmd:"" help:"Autofill planned_start_date from created_at on your unresolved tickets"`
+	PushEndDates   TicketsPushEndDatesCmd   `cmd:"" help:"Update planned_end_date to now + N business days on your unresolved tickets"`
 }
 
-type TicketsListCmd struct {
-	Format    string `help:"Output format" enum:"table,json,csv" default:"table"`
-	Filter    int64  `help:"Ticket filter/view id"`
-	Include   string `help:"Comma-separated fields to include"`
-	OrderBy   string `help:"Field to order by" default:"created_at"`
-	OrderType string `help:"Sort order" enum:"desc,asc" default:"asc"`
-	Page      int    `help:"Page number" default:"1"`
-	PerPage   int    `help:"Tickets per page" default:"30"`
-}
-
-var ticketsListColumns = []Column{
-	{Header: "ID", Path: "id"},
-	{Header: "Subject", Path: "subject"},
-	{Header: "Status", Path: "status", Format: columnName(statusName)},
-	{Header: "Priority", Path: "priority", Format: columnName(priorityName)},
-	{Header: "Requester", Path: "requester.name"},
-	{Header: "Group", Path: "group_id"},
-	{Header: "Created", Path: "created_at"},
-}
-
-func (c *TicketsListCmd) Run(ctx context.Context, client *Client) error {
-	q := url.Values{}
-	q.Set("order_by", c.OrderBy)
-	q.Set("order_type", c.OrderType)
-	q.Set("page", strconv.Itoa(c.Page))
-	q.Set("per_page", strconv.Itoa(c.PerPage))
-	if c.Filter != 0 {
-		q.Set("filter", strconv.FormatInt(c.Filter, 10))
-	}
-	if c.Include != "" {
-		q.Set("include", c.Include)
-	}
-
-	data, err := client.Get(ctx, "tickets", q)
-	if err != nil {
-		return err
-	}
-	return Print(data, "tickets", ticketsListColumns, c.Format)
-}
-
-type TicketsConvCmd struct {
-	Format  string `help:"Output format" enum:"table,json,csv" default:"table"`
-	Include string `help:"Comma-separated fields to include"`
-	PerPage int    `help:"Conversations per page" default:"3"`
-	ID      int64  `arg:"" help:"Ticket ID"`
-}
-
-var ticketsConvColumns = []Column{
-	{Header: "ID", Path: "id"},
-	{Header: "User", Path: "user_id"},
-	{Header: "Incoming", Path: "incoming"},
-	{Header: "Private", Path: "private"},
-	{Header: "Created", Path: "created_at"},
-	{Header: "Body", Path: "body_text"},
-}
-
-func (c *TicketsConvCmd) Run(ctx context.Context, client *Client) error {
-	q := url.Values{}
-	q.Set("per_page", strconv.Itoa(c.PerPage))
-	q.Set("order_by", "created_at")
-	q.Set("order_type", "asc")
-	if c.Include != "" {
-		q.Set("include", c.Include)
-	}
-
-	path := fmt.Sprintf("tickets/%d/conversations", c.ID)
-	data, err := client.Get(ctx, path, q)
-	if err != nil {
-		return err
-	}
-	return Print(data, "conversations", ticketsConvColumns, c.Format)
-}
-
-type TicketsClassifyCmd struct {
+type TicketsOverviewCmd struct {
 	OlderThanDays     float64 `help:"Business days waiting on the customer before flagging for follow-up/resolution" default:"2"`
 	IncludeUnassigned bool    `name:"include-unassigned" help:"Also list unassigned tickets (not your queue; costs one extra request)"`
 	Page              int     `help:"Page number" default:"1"`
@@ -131,7 +50,7 @@ func toCatTickets(tickets []Ticket) []catTicket {
 	return out
 }
 
-func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
+func (c *TicketsOverviewCmd) Run(ctx context.Context, client *Client) error {
 	now := nowInTZ()
 
 	// Targeted queries instead of scanning every unresolved ticket:
@@ -350,52 +269,6 @@ func truncate(s string, max int) string {
 	return s
 }
 
-type TicketsUpdateCmd struct {
-	Format string   `help:"Output format" enum:"table,json,csv" default:"table"`
-	Body   string   `help:"Raw JSON body (overrides key=value pairs)"`
-	ID     int64    `arg:"" help:"Ticket ID"`
-	Pairs  []string `arg:"" help:"key=value pairs to update (e.g. priority=1)"`
-}
-
-var ticketsUpdateColumns = []Column{
-	{Header: "ID", Path: "id"},
-	{Header: "Subject", Path: "subject"},
-	{Header: "Status", Path: "status", Format: columnName(statusName)},
-	{Header: "Priority", Path: "priority", Format: columnName(priorityName)},
-	{Header: "Group", Path: "group_id"},
-	{Header: "Responder", Path: "responder_id"},
-	{Header: "Department", Path: "department_id"},
-	{Header: "Updated", Path: "updated_at"},
-}
-
-func (c *TicketsUpdateCmd) Run(ctx context.Context, client *Client) error {
-	var payload []byte
-	var err error
-
-	switch {
-	case c.Body != "":
-		if !json.Valid([]byte(c.Body)) {
-			return fmt.Errorf("invalid JSON in --body")
-		}
-		payload = []byte(c.Body)
-	case len(c.Pairs) > 0:
-		payload, err = BuildBody(c.Pairs)
-		if err != nil {
-			return err
-		}
-	default:
-		return errors.New("nothing to update: provide key=value pairs or --body")
-	}
-
-	path := fmt.Sprintf("tickets/%d", c.ID)
-	data, err := client.Put(ctx, path, payload)
-	if err != nil {
-		return err
-	}
-	return Print(data, "ticket", ticketsUpdateColumns, c.Format)
-}
-
-// pendingChange describes a single ticket update for preview and apply.
 type pendingChange struct {
 	id    int64
 	field string
@@ -508,71 +381,6 @@ func ticketLocation(tickets []Ticket) *time.Location {
 		}
 	}
 	return nil
-}
-
-// ---- sync-ui ----------------------------------------------------------------
-
-type TicketsSyncUrgencyImpactCmd struct {
-	Yes     bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
-	PerPage int  `help:"Tickets per page" default:"100"`
-}
-
-func (c *TicketsSyncUrgencyImpactCmd) Run(ctx context.Context, client *Client) error {
-	var changes []pendingChange
-
-	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
-		targetU, targetI, ok := MinUrgencyImpactForPriority(t.Priority)
-		if !ok {
-			return nil
-		}
-
-		if t.Urgency == targetU && t.Impact == targetI {
-			return nil
-		}
-		changes = append(changes, pendingChange{
-			id:    t.ID,
-			field: fmt.Sprintf("priority=%d", t.Priority),
-			from:  fmt.Sprintf("urgency=%d impact=%d", t.Urgency, t.Impact),
-			to:    fmt.Sprintf("urgency=%d impact=%d", targetU, targetI),
-			body:  map[string]any{"urgency": targetU, "impact": targetI},
-		})
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return previewAndApply(ctx, client, changes, c.Yes)
-}
-
-// ---- sync-priority ----------------------------------------------------------
-
-type TicketsSyncPriorityCmd struct {
-	Yes     bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
-	PerPage int  `help:"Tickets per page" default:"100"`
-}
-
-func (c *TicketsSyncPriorityCmd) Run(ctx context.Context, client *Client) error {
-	var changes []pendingChange
-
-	if err := forEachMyTicket(ctx, client, c.PerPage, func(t Ticket) error {
-		target := PriorityFor(t.Urgency, t.Impact)
-		if target == 0 || target == t.Priority {
-			return nil
-		}
-
-		changes = append(changes, pendingChange{
-			id:    t.ID,
-			field: fmt.Sprintf("urgency=%d impact=%d", t.Urgency, t.Impact),
-			from:  fmt.Sprintf("priority=%d", t.Priority),
-			to:    fmt.Sprintf("priority=%d", target),
-			body:  map[string]any{"priority": target},
-		})
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return previewAndApply(ctx, client, changes, c.Yes)
 }
 
 // ---- helpers ----------------------------------------------------------------

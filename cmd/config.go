@@ -11,35 +11,10 @@ import (
 )
 
 type ConfigCmdGroup struct {
-	Init  ConfigInitCmd  `cmd:"" help:"Generate a default configuration file"`
 	Path  ConfigPathCmd  `cmd:"" help:"Show configuration file path"`
 	Show  ConfigShowCmd  `cmd:"" help:"Print current configuration values"`
 	Set   ConfigSetCmd   `cmd:"" help:"Set a config value"`
 	Unset ConfigUnsetCmd `cmd:"" help:"Unset a config value"`
-	Edit  ConfigEditCmd  `cmd:"" help:"Open config file in default editor"`
-}
-
-type ConfigInitCmd struct {
-	Overwrite bool `help:"Overwrite existing configuration file"`
-}
-
-func (cmd *ConfigInitCmd) Run(app *App) error {
-	p := app.CfgPath()
-	if _, err := os.Stat(p); err == nil && !cmd.Overwrite {
-		return fmt.Errorf("configuration file already exists at %s", p)
-	}
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		return fmt.Errorf("failed to create configuration directory: %w", err)
-	}
-	data, err := json.MarshalIndent(map[string]any{}, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal configuration: %w", err)
-	}
-	if err := os.WriteFile(p, data, 0644); err != nil {
-		return fmt.Errorf("failed to write configuration file: %w", err)
-	}
-	fmt.Printf("Configuration file created at %s\n", p)
-	return nil
 }
 
 type ConfigPathCmd struct{}

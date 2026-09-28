@@ -5,48 +5,6 @@ import (
 	"testing"
 )
 
-func TestParseRows_List(t *testing.T) {
-	body := []byte(`{"tickets":[{"id":1},{"id":2}],"meta":{}}`)
-	rows, err := ParseRows(body, "tickets")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(rows) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(rows))
-	}
-	if rows[0]["id"] != float64(1) {
-		t.Errorf("expected id 1, got %v", rows[0]["id"])
-	}
-}
-
-func TestParseRows_Single(t *testing.T) {
-	body := []byte(`{"user":{"id":7,"name":"Sal"}}`)
-	rows, err := ParseRows(body, "user")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 row, got %d", len(rows))
-	}
-	if rows[0]["name"] != "Sal" {
-		t.Errorf("expected name Sal, got %v", rows[0]["name"])
-	}
-}
-
-func TestParseRows_MissingKey(t *testing.T) {
-	_, err := ParseRows([]byte(`{"tickets":[]}`), "users")
-	if err == nil || !strings.Contains(err.Error(), "users") {
-		t.Errorf("expected missing key error, got %v", err)
-	}
-}
-
-func TestParseRows_Malformed(t *testing.T) {
-	_, err := ParseRows([]byte(`not json`), "tickets")
-	if err == nil {
-		t.Error("expected error for malformed JSON")
-	}
-}
-
 func TestLookup(t *testing.T) {
 	row := map[string]any{
 		"id": float64(1),
@@ -116,32 +74,6 @@ func TestRenderTable_MissingValue(t *testing.T) {
 	}
 }
 
-func TestRenderCSV(t *testing.T) {
-	columns := []Column{{Header: "ID", Path: "id"}, {Header: "Name", Path: "name"}}
-	rows := []map[string]any{
-		{"id": float64(1), "name": "Omar"},
-		{"id": float64(2), "name": "Lina, Noor"},
-	}
-	got := RenderCSV(columns, rows)
-	want := "ID,Name\n1,Omar\n2,\"Lina, Noor\"\n"
-	if got != want {
-		t.Errorf("unexpected csv:\n%s", got)
-	}
-}
-
-func TestPrettyJSON(t *testing.T) {
-	pretty, err := PrettyJSON([]byte(`{"a":1}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(string(pretty), "\n") {
-		t.Errorf("expected indented JSON, got %q", pretty)
-	}
-	if _, err := PrettyJSON([]byte(`bad`)); err == nil {
-		t.Error("expected error for malformed JSON")
-	}
-}
-
 func TestTruncate(t *testing.T) {
 	if got := truncate("short", 40); got != "short" {
 		t.Errorf("expected short unchanged, got %q", got)
@@ -171,11 +103,6 @@ func TestColumnFormat(t *testing.T) {
 	}
 	if strings.Contains(table, "| 2 ") {
 		t.Errorf("expected raw number replaced in table, got:\n%s", table)
-	}
-
-	csv := RenderCSV(columns, rows)
-	if !strings.Contains(csv, "Medium") {
-		t.Errorf("expected formatted value in csv, got:\n%s", csv)
 	}
 }
 

@@ -124,27 +124,6 @@ func TestE2E_SessionEnvConfig(t *testing.T) {
 	}
 }
 
-// TestE2E_TicketsList checks the full list path renders names end to end.
-func TestE2E_TicketsList(t *testing.T) {
-	srv := newMockAPI(t)
-	out, code := runFsvc(t, []string{
-		"FSVC_BASE_URL=" + srv.URL,
-		"FSVC_ITILDESK_SESSION=cookie-value",
-	}, "tickets", "list")
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
-	}
-	for _, want := range []string{"Printer not working", "Open", "Medium"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %q in list output:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "| 2 ") {
-		t.Errorf("expected no raw status/priority numbers:\n%s", out)
-	}
-}
-
-// TestE2E_MissingSession verifies the actionable-error contract.
 func TestE2E_MissingSession(t *testing.T) {
 	srv := newMockAPI(t)
 	out, code := runFsvc(t, []string{"FSVC_BASE_URL=" + srv.URL}, "session")

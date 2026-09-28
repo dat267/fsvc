@@ -14,31 +14,6 @@ func setupTestApp(t *testing.T) *App {
 	return &App{cfgPath: filepath.Join(dir, "config.json")}
 }
 
-func TestConfigInitCmd_Run(t *testing.T) {
-	app := setupTestApp(t)
-	p := app.CfgPath()
-
-	out := captureStdout(t, func() {
-		if err := (&ConfigInitCmd{}).Run(app); err != nil {
-			t.Fatalf("unexpected error on init: %v", err)
-		}
-	})
-	if !strings.Contains(out, "created at") {
-		t.Errorf("expected success message, got: %s", out)
-	}
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		t.Fatal("expected config file to be created on disk")
-	}
-
-	if err := (&ConfigInitCmd{}).Run(app); err == nil {
-		t.Fatal("expected error when initializing over existing file without Overwrite=true")
-	}
-
-	if err := (&ConfigInitCmd{Overwrite: true}).Run(app); err != nil {
-		t.Fatalf("unexpected error with Overwrite=true: %v", err)
-	}
-}
-
 func TestConfigShowCmd_Missing(t *testing.T) {
 	app := setupTestApp(t)
 	out := captureStdout(t, func() {
