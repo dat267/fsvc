@@ -162,6 +162,17 @@ environment variables override the file.
 
 Point at a mock server with `--base-url http://127.0.0.1:PORT` for safe testing.
 
+`config show` masks the session cookie and CSRF token (`<set>`, or `<empty>`
+when blank), so its output is safe to paste into a ticket or a log, and
+`config set` does not echo a secret back. `config set` and `config unset`
+reject keys the CLI does not read, so a typo like `itildesk_session` fails
+loudly instead of being stored where nothing reads it. A value that starts
+with `-` needs the `--` separator:
+
+```sh
+fsvc config set csrf-token -- -abc123
+```
+
 ## Build
 
 ```bash

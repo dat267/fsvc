@@ -134,3 +134,22 @@ func TestE2E_MissingSession(t *testing.T) {
 		t.Errorf("expected hint naming the missing config, got:\n%s", out)
 	}
 }
+
+// TestE2E_SessionFileConfig drives auth purely through the config file, which
+// is the path the README documents.
+func TestE2E_SessionFileConfig(t *testing.T) {
+	srv := newMockAPI(t)
+	cfgPath := filepath.Join(t.TempDir(), "fsvc.json")
+	cfg := fmt.Sprintf("{\n  \"base-url\": %q,\n  \"itildesk-session\": \"cookie-value\"\n}\n", srv.URL)
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	out, code := runFsvc(t, []string{"FSVC_CONFIG_FILE=" + cfgPath}, "session")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "OK: authenticated") {
+		t.Errorf("unexpected session output:\n%s", out)
+	}
+}
