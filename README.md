@@ -64,7 +64,8 @@ fsvc config set subdomain acme
 fsvc config set itildesk-session "<your _itildesk_session value>"
 
 fsvc session                                # verify
-fsvc tickets classify                       # unresolved tickets in 3 lists
+fsvc tickets classify                       # your unresolved tickets, 2 lists
+fsvc tickets classify --include-unassigned  # + the unassigned backlog
 fsvc tickets list --format json             # raw ticket list
 fsvc tickets conversations 10100            # messages on a ticket
 fsvc ticket-filters show 1100               # show a saved ticket filter
@@ -145,7 +146,7 @@ Verify the session cookie: `GET /api/_/tickets?per_page=1`.
 | --- | --- |
 | `tickets list` | List tickets. `--filter <id>`, `--include`, `--order-by`, `--order-type`, `--page`, `--per-page`, `--format table\|json\|csv` |
 | `tickets conversations <id>` | Conversations for a ticket. `--per-page`, `--include`, `--format` |
-| `tickets classify` | Your unresolved tickets in 3 lists: unassigned, stale agent response, customer responded. `--older-than-days` (business days, default 2), `--query-json`, optional filter ID |
+| `tickets classify` | Your unresolved tickets in two lists: stale agent response, customer responded. `--include-unassigned` adds the unassigned backlog (one extra request); `--older-than-days` (business days, default 2), `--query-json`, optional filter ID |
 | `tickets show <id>` | Ticket and conversation trace as Markdown |
 | `tickets export <id>` | Export to DOCX, Markdown, or HTML |
 | `tickets fill-start-dates` | Backfill `planned_start_date` from `created_at` on your unresolved tickets. `-y` |

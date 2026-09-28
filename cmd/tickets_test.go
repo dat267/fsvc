@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/alecthomas/kong"
 )
 
 func loadFixture(t *testing.T, name string) []byte {
@@ -210,7 +212,7 @@ func TestTicketsClassifyCmd(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsClassifyCmd{OlderThanDays: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsClassifyCmd{OlderThanDays: 1, PerPage: 100, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -326,7 +328,7 @@ func TestTicketsClassifyCmd_Pagination(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 1}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 1, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1005,5 +1007,103 @@ func TestTicketLocation(t *testing.T) {
 	got = ticketLocation([]Ticket{{}, {PlannedEndDate: &at}})
 	if got == nil || got != dubai {
 		t.Errorf("expected later planned_end_date zone, got %v", got)
+	}
+}
+
+// classifyFixture serves one unassigned ticket plus two self-assigned ones and
+// counts how many times the unassigned view is fetched.
+func classifyFixture(t *testing.T) (*httptest.Server, *int) {
+	t.Helper()
+	unassignedFetches := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Query().Get("query_hash"), `"value":["-1"]`) {
+			unassignedFetches++
+			_, _ = fmt.Fprint(w, `{"tickets":[{"id":10103,"subject":"Unassigned printer ticket","priority":1,"status":2,"responder_id":-1,"created_at":"2026-08-01T00:00:00+04:00"}],"meta":{"has_next":false}}`)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10100,"subject":"Mine one","priority":2,"status":2,"responder_id":3100,"created_at":"2026-07-29T16:42:48+04:00"},{"id":10101,"subject":"Mine two","priority":1,"status":4,"responder_id":3101,"created_at":"2026-07-28T10:00:00+04:00"}],"meta":{"has_next":false}}`)
+	})
+	mux.HandleFunc("/api/_/tickets/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"conversations":[],"meta":{"count":0}}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv, &unassignedFetches
+}
+
+func TestTicketsClassifyCmd_SkipsUnassignedByDefault(t *testing.T) {
+	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
+	srv, unassignedFetches := classifyFixture(t)
+
+	out := captureStdout(t, func() {
+		if err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if *unassignedFetches != 0 {
+		t.Errorf("expected the unassigned view to be skipped entirely, fetched %d time(s)", *unassignedFetches)
+	}
+	if strings.Contains(out, "## Unassigned") {
+		t.Errorf("expected no unassigned section by default:\n%s", out)
+	}
+	if strings.Contains(out, "10103") {
+		t.Errorf("expected the unassigned ticket to be absent by default:\n%s", out)
+	}
+	if !strings.Contains(out, "Scanned 2 unresolved tickets (2 self-assigned)") {
+		t.Errorf("expected a self-assigned-only summary:\n%s", out)
+	}
+}
+
+func TestTicketsClassifyCmd_IncludeUnassigned(t *testing.T) {
+	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC))
+	srv, unassignedFetches := classifyFixture(t)
+
+	out := captureStdout(t, func() {
+		if err := (&TicketsClassifyCmd{OlderThanDays: 1, Page: 1, PerPage: 100, IncludeUnassigned: true}).Run(context.Background(), newTestClient(srv.URL)); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if *unassignedFetches != 1 {
+		t.Errorf("expected the unassigned view to be fetched once, got %d", *unassignedFetches)
+	}
+	if !strings.Contains(out, "## Unassigned (1)") {
+		t.Errorf("expected the unassigned section with --include-unassigned:\n%s", out)
+	}
+	if !strings.Contains(out, "10103") {
+		t.Errorf("expected the unassigned ticket with --include-unassigned:\n%s", out)
+	}
+	if !strings.Contains(out, "Scanned 3 unresolved tickets (2 self-assigned, 1 unassigned)") {
+		t.Errorf("expected the three-way summary with --include-unassigned:\n%s", out)
+	}
+}
+
+func TestTicketsClassifyCmd_IncludeUnassignedFlagBinds(t *testing.T) {
+	var cli CLI
+	parser, err := kong.New(&cli)
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	if _, err := parser.Parse([]string{"tickets", "classify"}); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if cli.Tickets.Classify.IncludeUnassigned {
+		t.Error("expected --include-unassigned to be off by default")
+	}
+
+	var custom CLI
+	customParser, err := kong.New(&custom)
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	if _, err := customParser.Parse([]string{"tickets", "classify", "--include-unassigned"}); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !custom.Tickets.Classify.IncludeUnassigned {
+		t.Error("expected --include-unassigned to bind")
 	}
 }

@@ -101,11 +101,12 @@ func (c *TicketsConvCmd) Run(ctx context.Context, client *Client) error {
 }
 
 type TicketsClassifyCmd struct {
-	OlderThanDays float64 `help:"Business days waiting on the customer before flagging for follow-up/resolution" default:"2"`
-	Page          int     `help:"Page number" default:"1"`
-	PerPage       int     `help:"Tickets per page" default:"100"`
-	QueryJSON     string  `name:"query-json" help:"Raw JSON query params to pass to the tickets list endpoint"`
-	Filter        int64   `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
+	OlderThanDays     float64 `help:"Business days waiting on the customer before flagging for follow-up/resolution" default:"2"`
+	IncludeUnassigned bool    `name:"include-unassigned" help:"Also list unassigned tickets (not your queue; costs one extra request)"`
+	Page              int     `help:"Page number" default:"1"`
+	PerPage           int     `help:"Tickets per page" default:"100"`
+	QueryJSON         string  `name:"query-json" help:"Raw JSON query params to pass to the tickets list endpoint"`
+	Filter            int64   `arg:"" help:"Ticket filter/view ID (optional; default: unresolved tickets)" optional:""`
 }
 
 var classifyColumns = []Column{
@@ -133,19 +134,23 @@ func toCatTickets(tickets []Ticket) []catTicket {
 func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 	now := nowInTZ()
 
-	// Two targeted queries instead of scanning every unresolved ticket:
-	//   1. unassigned unresolved tickets (responder_id = -1)
-	//   2. self-assigned unresolved tickets (responder_id = 0) — the only set
-	//      that needs the expensive per-ticket conversation scan.
+	// Targeted queries instead of scanning every unresolved ticket:
+	//   1. self-assigned unresolved tickets (responder_id = 0) — the set that
+	//      needs the expensive per-ticket conversation scan
+	//   2. unassigned unresolved tickets (responder_id = -1), only when asked
+	//      for: they are not the operator's queue, and skipping the view saves
+	//      a request
 	var unassigned, myTickets []Ticket
+	queryMode := c.QueryJSON != "" || c.Filter != 0
 
-	if c.QueryJSON != "" || c.Filter != 0 {
+	switch {
+	case queryMode:
 		var err error
 		myTickets, err = TicketQuery{PerPage: c.PerPage, QueryJSON: c.QueryJSON, Filter: c.Filter}.List(ctx, client, c.Page)
 		if err != nil {
 			return err
 		}
-	} else {
+	case c.IncludeUnassigned:
 		var wg sync.WaitGroup
 		var errUn, errMy error
 		wg.Add(2)
@@ -164,6 +169,12 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 		if errMy != nil {
 			return errMy
 		}
+	default:
+		var err error
+		myTickets, err = SelfAssignedTickets(c.PerPage).List(ctx, client, c.Page)
+		if err != nil {
+			return err
+		}
 	}
 
 	staleAgent, awaitingCustomer, err := classifyTickets(ctx, client, myTickets, c.OlderThanDays, now)
@@ -171,18 +182,18 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 		return err
 	}
 
-	unassignedCat := toCatTickets(unassigned)
-	unassignedCount := len(unassigned)
-
-	// When using --query-json or --filter, unassigned is nil and must be
-	// derived from the classify results.
-	if unassigned == nil {
-		for _, t := range myTickets {
-			if t.ResponderID == nil || *t.ResponderID < 0 {
-				unassignedCat = append(unassignedCat, catTicket{id: t.ID, ticket: t})
+	// The unassigned bucket is reported only on request. In query mode there is
+	// no separate view, so it is derived from the queried tickets instead.
+	var unassignedCat []catTicket
+	if c.IncludeUnassigned {
+		unassignedCat = toCatTickets(unassigned)
+		if unassigned == nil {
+			for _, t := range myTickets {
+				if t.ResponderID == nil || *t.ResponderID < 0 {
+					unassignedCat = append(unassignedCat, catTicket{id: t.ID, ticket: t})
+				}
 			}
 		}
-		unassignedCount = len(unassignedCat)
 	}
 
 	sort.Slice(unassignedCat, func(i, j int) bool {
@@ -195,17 +206,22 @@ func (c *TicketsClassifyCmd) Run(ctx context.Context, client *Client) error {
 		return awaitingCustomer[i].lastMsgAt.Before(awaitingCustomer[j].lastMsgAt)
 	})
 
-	total := unassignedCount + len(myTickets)
-	selfAssigned := len(myTickets)
-	if unassigned == nil {
-		total = len(myTickets)
-		selfAssigned = len(myTickets) - unassignedCount
+	switch {
+	case !c.IncludeUnassigned:
+		fmt.Printf("Scanned %d unresolved tickets (%d self-assigned)\n\n", len(myTickets), len(myTickets))
+	case unassigned == nil:
+		// Query mode: the unassigned bucket came out of the same set.
+		fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", len(myTickets), len(myTickets)-len(unassignedCat), len(unassignedCat))
+	default:
+		fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", len(unassignedCat)+len(myTickets), len(myTickets), len(unassignedCat))
 	}
-	fmt.Printf("Scanned %d unresolved tickets (%d self-assigned, %d unassigned)\n\n", total, selfAssigned, unassignedCount)
 
-	fmt.Printf("## Unassigned (%d)\n\n", unassignedCount)
-	printCatTable(unassignedCat, client)
-	fmt.Printf("\n## Waiting on customer > %g business days — follow up or resolve (%d)\n\n", c.OlderThanDays, len(staleAgent))
+	if c.IncludeUnassigned {
+		fmt.Printf("## Unassigned (%d)\n\n", len(unassignedCat))
+		printCatTable(unassignedCat, client)
+		fmt.Print("\n")
+	}
+	fmt.Printf("## Waiting on customer > %g business days — follow up or resolve (%d)\n\n", c.OlderThanDays, len(staleAgent))
 	printCatTable(staleAgent, client)
 	fmt.Printf("\n## Last reply from someone else, awaiting agent (%d)\n\n", len(awaitingCustomer))
 	printCatTable(awaitingCustomer, client)
