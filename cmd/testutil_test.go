@@ -36,3 +36,17 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	return buf.String()
 }
+
+// putRecord is a PUT body captured by a test server.
+type putRecord struct {
+	Path string
+	Body string
+}
+
+// setTimeZone pins the --time-zone value for the duration of a test.
+func setTimeZone(t *testing.T, zone string) {
+	t.Helper()
+	old := tz
+	tz = zone
+	t.Cleanup(func() { tz = old })
+}

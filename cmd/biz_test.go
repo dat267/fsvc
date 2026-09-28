@@ -110,57 +110,79 @@ func TestClassify(t *testing.T) {
 }
 
 func TestTargetEndDate(t *testing.T) {
-	tueNoon := time.Date(2026, 8, 4, 12, 7, 30, 0, time.UTC) // Tuesday
+	tue := time.Date(2026, 8, 4, 12, 7, 30, 0, time.UTC) // Tuesday
 
 	tests := []struct {
-		name    string
-		now     time.Time
-		days    int
-		endHour int
-		want    string
+		name string
+		base time.Time
+		days int
+		hour int
+		want string
 	}{
-		{"default keeps time, rounds quarter", tueNoon, 3, -1, "2026-08-07T12:15:00Z"},
-		{"endHour overrides time of day", tueNoon, 3, 17, "2026-08-07T17:00:00Z"},
-		{"endHour midnight", tueNoon, 3, 0, "2026-08-07T00:00:00Z"},
-		{"zero days same day", tueNoon, 0, 9, "2026-08-04T09:00:00Z"},
-		{"weekend skipped", time.Date(2026, 8, 7, 15, 0, 0, 0, time.UTC), 1, -1, "2026-08-10T15:00:00Z"}, // Fri + 1 = Mon
+		{"base + 3 business days at the target hour", tue, 3, 17, "2026-08-07T17:00:00Z"},
+		{"zero days keeps the day", tue, 0, 9, "2026-08-04T09:00:00Z"},
+		{"midnight hour", tue, 3, 0, "2026-08-07T00:00:00Z"},
+		{"weekend skipped", time.Date(2026, 8, 7, 15, 0, 0, 0, time.UTC), 1, 17, "2026-08-10T17:00:00Z"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := TargetEndDate(tt.now, tt.days, tt.endHour)
+			got := TargetEndDate(tt.base, tt.days, tt.hour, time.Time{})
 			if got.Format(time.RFC3339) != tt.want {
-				t.Errorf("TargetEndDate(%v, %d, %d) = %s, want %s", tt.now, tt.days, tt.endHour, got.Format(time.RFC3339), tt.want)
+				t.Errorf("TargetEndDate(%s, %d, %d) = %s, want %s",
+					tt.base.Format(time.RFC3339), tt.days, tt.hour, got.Format(time.RFC3339), tt.want)
 			}
 		})
 	}
 }
 
-func TestShouldPushEnd(t *testing.T) {
-	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	future := now.Add(72 * time.Hour)
-	soon := now.Add(6 * time.Hour)
-	past := now.Add(-24 * time.Hour)
+// A target that would land in the past is clamped to the nearest future slot:
+// the same day at the target hour, else the next business day at that hour.
+func TestTargetEndDateClampsToTheFuture(t *testing.T) {
+	old := time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)
 
 	tests := []struct {
-		name        string
-		plannedEnd  *time.Time
-		now         time.Time
-		withinHours int
-		want        bool
+		name string
+		now  time.Time
+		want string
 	}{
-		{"nil date always pushes", nil, now, 0, true},
-		{"past date always pushes", &past, now, 0, true},
-		{"future date without window skips", &future, now, 0, false},
-		{"future inside window pushes", &soon, now, 24, true},
-		{"future beyond window skips", &future, now, 24, false},
+		{"before the target hour clamps to today", time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC), "2026-08-04T17:00:00Z"},
+		{"after the target hour moves to the next business day", time.Date(2026, 8, 4, 18, 0, 0, 0, time.UTC), "2026-08-05T17:00:00Z"},
+		{"friday evening moves to monday", time.Date(2026, 8, 7, 18, 0, 0, 0, time.UTC), "2026-08-10T17:00:00Z"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ShouldPushEnd(tt.plannedEnd, tt.now, tt.withinHours); got != tt.want {
-				t.Errorf("ShouldPushEnd(%v, %v, %d) = %v, want %v", tt.plannedEnd, tt.now, tt.withinHours, got, tt.want)
+			got := TargetEndDate(old, 3, 17, tt.now)
+			if got.Format(time.RFC3339) != tt.want {
+				t.Errorf("clamped target = %s, want %s", got.Format(time.RFC3339), tt.want)
 			}
 		})
+	}
+}
+
+func TestTargetEndDateKeepsTheAccountOffset(t *testing.T) {
+	dubai := time.FixedZone("+04:00", 4*60*60)
+	base := time.Date(2026, 8, 4, 12, 7, 30, 0, dubai)
+
+	got := TargetEndDate(base, 3, 17, time.Time{})
+	if want := "2026-08-07T17:00:00+04:00"; got.Format(time.RFC3339) != want {
+		t.Errorf("expected the account offset preserved: want %s, got %s", want, got.Format(time.RFC3339))
+	}
+}
+
+func TestEndDateNeedsUpdate(t *testing.T) {
+	target := time.Date(2026, 8, 7, 17, 0, 0, 0, time.FixedZone("+04:00", 4*60*60))
+
+	if !EndDateNeedsUpdate(nil, target) {
+		t.Error("a missing planned_end_date needs an update")
+	}
+	equal := time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC) // same instant, other offset
+	if EndDateNeedsUpdate(&equal, target) {
+		t.Error("an equal instant in another offset must be skipped")
+	}
+	different := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+	if !EndDateNeedsUpdate(&different, target) {
+		t.Error("a different instant needs an update")
 	}
 }

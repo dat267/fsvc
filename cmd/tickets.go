@@ -320,11 +320,10 @@ func (c *TicketsFillStartDatesCmd) Run(ctx context.Context, client *Client) erro
 // ---- push-end-dates ---------------------------------------------------------
 
 type TicketsPushEndDatesCmd struct {
-	Yes         bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
-	Days        int  `arg:"" help:"Business days from now to set as planned end date" default:"3"`
-	EndHour     int  `help:"Preferred hour (0-23) for the target date; default uses current time" default:"-1"`
-	WithinHours int  `help:"Also push planned_end_date when it falls within this many hours of now (0 = only nil/past dates)"`
-	PerPage     int  `help:"Tickets per page" default:"100"`
+	Yes        bool `help:"Skip confirmation prompt" name:"yes" short:"y"`
+	Days       int  `arg:"" help:"Business days after the ticket's last message to set as planned end date" default:"3"`
+	TargetHour int  `help:"Hour of day (0-23) to land on; earlier targets are clamped forward" default:"17"`
+	PerPage    int  `help:"Tickets per page" default:"100"`
 }
 
 func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error {
@@ -333,37 +332,112 @@ func (c *TicketsPushEndDatesCmd) Run(ctx context.Context, client *Client) error 
 		return err
 	}
 
-	// planned_end_date is interpreted in the account timezone. Use the zone
-	// evidenced by the ticket dates unless --time-zone was set explicitly.
-	base := nowInTZ()
+	// planned_end_date is interpreted in the account timezone: --time-zone when
+	// set, otherwise the offset the ticket dates evidence.
+	now := nowInTZ()
 	if tz == "" {
 		if loc := ticketLocation(list); loc != nil {
-			base = now().In(loc)
+			now = now.In(loc)
 		}
 	}
-	target := TargetEndDate(base, c.Days, c.EndHour).Format(time.RFC3339)
+	loc := now.Location()
+
+	// Every ticket is recomputed from its own last message, so the scan is per
+	// ticket; it runs on the shared worker pool.
+	latest, err := latestMessageTimes(ctx, client, list)
+	if err != nil {
+		return err
+	}
 
 	var changes []pendingChange
 	for _, t := range list {
+		base := latest[t.ID]
+		if base.IsZero() {
+			base = t.CreatedAt
+		}
+		if base.IsZero() {
+			continue // nothing to count business days from
+		}
+
+		target := TargetEndDate(base.In(loc), c.Days, c.TargetHour, now)
+		if !EndDateNeedsUpdate(t.PlannedEndDate, target) {
+			continue
+		}
+
+		value := target.Format(time.RFC3339)
 		cur := ""
 		if t.PlannedEndDate != nil {
 			cur = t.PlannedEndDate.Format(time.RFC3339)
 		}
-
-		if !ShouldPushEnd(t.PlannedEndDate, base, c.WithinHours) {
-			continue
-		}
-
 		changes = append(changes, pendingChange{
 			id:    t.ID,
 			field: "planned_end_date",
 			from:  cur,
-			to:    target,
-			body:  map[string]any{"planned_end_date": target},
+			to:    value,
+			body:  map[string]any{"planned_end_date": value},
 		})
 	}
 
 	return previewAndApply(ctx, client, changes, c.Yes)
+}
+
+// latestMessageTimes returns each ticket's most recent conversation time, or
+// the zero time when it has no conversations. Fetches run on the configured
+// worker pool; the first failure aborts the run.
+func latestMessageTimes(ctx context.Context, client *Client, tickets []Ticket) (map[int64]time.Time, error) {
+	if len(tickets) == 0 {
+		return map[int64]time.Time{}, nil
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	work := make(chan Ticket, len(tickets))
+	for _, t := range tickets {
+		work <- t
+	}
+	close(work)
+
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		times    = make(map[int64]time.Time, len(tickets))
+		firstErr error
+		errOnce  sync.Once
+	)
+
+	for i := 0; i < poolSize(len(tickets)); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for t := range work {
+				if ctx.Err() != nil {
+					return
+				}
+				latest, err := client.LatestConversation(ctx, t.ID)
+				if err != nil {
+					errOnce.Do(func() {
+						firstErr = fmt.Errorf("ticket %d conversations: %w", t.ID, err)
+						cancel()
+					})
+					return
+				}
+				var at time.Time
+				if latest != nil {
+					at = latest.CreatedAt
+				}
+				mu.Lock()
+				times[t.ID] = at
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return times, nil
 }
 
 // ticketLocation returns the account timezone as evidenced by the ticket

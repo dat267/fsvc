@@ -79,26 +79,36 @@ func isWeekday(t time.Time) bool {
 	return t.Weekday() != time.Saturday && t.Weekday() != time.Sunday
 }
 
-// TargetEndDate computes the planned_end_date target: now advanced by n
-// business days, with the time of day overridden to endHour when endHour is
-// in [0,23], then rounded up to the quarter-hour.
-func TargetEndDate(now time.Time, days, endHour int) time.Time {
-	end := AddBusinessDays(now, days)
-	if endHour >= 0 && endHour <= 23 {
-		end = time.Date(end.Year(), end.Month(), end.Day(), endHour, 0, 0, 0, end.Location())
+// TargetEndDate computes a planned_end_date from a base instant: advance by
+// days business days, set the time of day to hour, round up to the quarter
+// hour, and clamp to the future when now is supplied. It mirrors the
+// PowerShell Update-FSvcPlannedEndDates policy, where the base is the ticket's
+// last comment rather than the current time.
+func TargetEndDate(base time.Time, days, hour int, now time.Time) time.Time {
+	end := AddBusinessDays(base, days)
+	if hour >= 0 && hour <= 23 {
+		end = time.Date(end.Year(), end.Month(), end.Day(), hour, 0, 0, 0, end.Location())
 	}
-	return roundUpQuarterHour(end)
+	end = roundUpQuarterHour(end)
+
+	if now.IsZero() || end.After(now) {
+		return end
+	}
+
+	// Too late already: land on the target hour today, or the next business
+	// day when that hour has passed.
+	slot := time.Date(now.Year(), now.Month(), now.Day(), hour, 0, 0, 0, now.Location())
+	if !slot.After(now) {
+		slot = AddBusinessDays(slot, 1)
+	}
+	return slot
 }
 
-// ShouldPushEnd decides whether a ticket's planned_end_date should be pushed.
-// nil and past dates always push; future dates push only when withinHours > 0
-// and the date falls inside the window.
-func ShouldPushEnd(plannedEnd *time.Time, now time.Time, withinHours int) bool {
+// EndDateNeedsUpdate reports whether plannedEnd differs from target. A missing
+// date always needs an update; equal instants in different offsets do not.
+func EndDateNeedsUpdate(plannedEnd *time.Time, target time.Time) bool {
 	if plannedEnd == nil {
 		return true
 	}
-	if plannedEnd.Before(now) {
-		return true
-	}
-	return withinHours > 0 && !plannedEnd.After(now.Add(time.Duration(withinHours)*time.Hour))
+	return !plannedEnd.Equal(target)
 }

@@ -6,7 +6,8 @@ authenticated with a session cookie. It does three things:
 - `tickets overview` — your unresolved tickets, split into *waiting on
   customer* and *awaiting agent*
 - `tickets fill-start-dates` — autofill `planned_start_date` from `created_at`
-- `tickets push-end-dates` — update `planned_end_date` to now + N business days
+- `tickets push-end-dates` — set `planned_end_date` to N business days after
+  each ticket's last message
 
 Built on [Kong](https://github.com/alecthomas/kong). One static binary per
 platform, no runtime dependencies.
@@ -105,13 +106,17 @@ fsvc tickets fill-start-dates -y      # skip the confirmation prompt
 
 ### `fsvc tickets push-end-dates`
 
-Set `planned_end_date` to now + N business days on your unresolved tickets.
+Set `planned_end_date` to N business days after each ticket's **last message**
+(its `created_at` when it has no messages), at `--target-hour` (default 17:00)
+and rounded up to the quarter hour. A target already in the past is clamped
+forward: today at that hour, or the next business day when that hour has passed.
+The date is written in the account's offset, and a ticket already at the target
+is skipped, so re-running is a no-op.
 
 ```bash
 fsvc tickets push-end-dates 3                     # preview, then confirm
-fsvc tickets push-end-dates 3 -y                   # skip the prompt
-fsvc tickets push-end-dates 3 --within-hours 24    # also push dates due inside 24h
-fsvc tickets push-end-dates 3 --end-hour 17        # land on a preferred hour
+fsvc tickets push-end-dates 3 -y                  # skip the prompt
+fsvc tickets push-end-dates 3 --target-hour 12    # land at noon instead of 17:00
 ```
 
 ### Other

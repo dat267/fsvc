@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -246,168 +247,175 @@ func TestTicketsFillStartDatesCmd(t *testing.T) {
 	}
 }
 
-func TestTicketsPushEndDatesCmd(t *testing.T) {
-	// Tuesday noon+offset so now+3 business days (Friday) is mid-quarter and
-	// must be rounded up to 12:15:00.
-	setNow(t, time.Date(2026, 8, 4, 12, 7, 30, 0, time.UTC))
-	var putCalls []struct {
-		Path string
-		Body []byte
-	}
-	var putMu sync.Mutex
+// pushEndFixture serves the given ticket list and records every PUT body.
+// lastMsg maps a ticket id to its latest conversation time; "" means the ticket
+// has no conversations at all.
+func pushEndFixture(t *testing.T, ticketsJSON string, lastMsg map[int64]string) (*httptest.Server, func() []putRecord) {
+	t.Helper()
+	var (
+		mu   sync.Mutex
+		puts []putRecord
+	)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_end_date":null},{"id":20,"planned_end_date":"2099-01-01T00:00:00Z"},{"id":30,"planned_end_date":"2020-01-01T00:00:00Z"}],"meta":{"has_next":false}}`)
+		_, _ = fmt.Fprint(w, ticketsJSON)
 	})
-	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		putMu.Lock()
-		putCalls = append(putCalls, struct {
-			Path string
-			Body []byte
-		}{Path: r.URL.Path, Body: b})
-		putMu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
-	})
-	mux.HandleFunc("/api/_/tickets/30", func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		putMu.Lock()
-		putCalls = append(putCalls, struct {
-			Path string
-			Body []byte
-		}{Path: r.URL.Path, Body: b})
-		putMu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":30}}`)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	out := captureStdout(t, func() {
-		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, PerPage: 100, EndHour: -1}).Run(context.Background(), newTestClient(srv.URL))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	if !strings.Contains(out, "[planned_end_date] ticket 10:  -> ") {
-		t.Errorf("expected null→filled preview, got %q", out)
-	}
-	if !strings.Contains(out, "[planned_end_date] ticket 30: 2020-01-01T00:00:00Z -> ") {
-		t.Errorf("expected past→bump preview, got %q", out)
-	}
-	if strings.Contains(out, "ticket 20") {
-		t.Errorf("future-date ticket 20 should not appear, got %q", out)
-	}
-	if len(putCalls) != 2 {
-		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
-	}
-	if !strings.Contains(out, "Done: 2 applied") {
-		t.Errorf("expected summary, got %q", out)
-	}
-}
-
-func TestTicketsPushEndDatesCmd_WithinHours(t *testing.T) {
-	setNow(t, time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)) // now = 08-04 12:00 UTC
-	var putCalls []struct {
-		Path string
-		Body []byte
-	}
-	var putMu sync.Mutex
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		// 10: within window (6h out). 20: beyond window (72h out). 30: past.
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_end_date":"2026-08-04T18:00:00Z"},{"id":20,"planned_end_date":"2026-08-07T12:00:00Z"},{"id":30,"planned_end_date":"2026-08-01T00:00:00Z"}],"meta":{"has_next":false}}`)
-	})
-	for _, id := range []string{"10", "30"} {
-		mux.HandleFunc("/api/_/tickets/"+id, func(w http.ResponseWriter, r *http.Request) {
-			b, _ := io.ReadAll(r.Body)
-			putMu.Lock()
-			putCalls = append(putCalls, struct {
-				Path string
-				Body []byte
-			}{Path: r.URL.Path, Body: b})
-			putMu.Unlock()
+	mux.HandleFunc("/api/_/tickets/", func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/_/tickets/"), "/")
+		if strings.HasSuffix(rest, "/conversations") {
+			parts := strings.Split(rest, "/")
+			id, _ := strconv.ParseInt(parts[0], 10, 64)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{"ticket":{}}`)
-		})
-	}
+			if at := lastMsg[id]; at != "" {
+				_, _ = fmt.Fprintf(w, `{"conversations":[{"id":1,"user_id":2,"incoming":true,"created_at":%q}],"meta":{"count":1}}`, at)
+			} else {
+				_, _ = fmt.Fprint(w, `{"conversations":[],"meta":{"count":0}}`)
+			}
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		puts = append(puts, putRecord{Path: r.URL.Path, Body: string(b)})
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ticket":{}}`)
+	})
+
 	srv := httptest.NewServer(mux)
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv, func() []putRecord {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]putRecord(nil), puts...)
+	}
+}
+
+// The target is the ticket's own last message plus N business days at the
+// target hour, in the account's offset.
+func TestTicketsPushEndDatesCmd_TargetsLastMessage(t *testing.T) {
+	setNow(t, time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC))
+	setTimeZone(t, "")
+
+	srv, puts := pushEndFixture(t,
+		`{"tickets":[{"id":10,"planned_end_date":null,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}`,
+		map[int64]string{10: "2026-09-11T09:00:00+04:00"}) // Friday
 
 	out := captureStdout(t, func() {
-		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, PerPage: 100, WithinHours: 24, EndHour: -1}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, TargetHour: 17, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	if !strings.Contains(out, "ticket 10") {
-		t.Errorf("expected within-window ticket 10 to be pushed, got %q", out)
+	// Fri 11 Sep + 3 business days = Wed 16 Sep, at 17:00 in the ticket offset.
+	want := `{"planned_end_date":"2026-09-16T17:00:00+04:00"}`
+	got := puts()
+	if len(got) != 1 {
+		t.Fatalf("expected 1 PUT, got %d (output: %s)", len(got), out)
 	}
-	if !strings.Contains(out, "ticket 30") {
-		t.Errorf("expected past ticket 30 to be pushed, got %q", out)
+	if got[0].Body != want {
+		t.Errorf("expected %s, got %s", want, got[0].Body)
 	}
-	if strings.Contains(out, "ticket 20") {
-		t.Errorf("beyond-window ticket 20 should not appear, got %q", out)
+}
+
+// Each ticket counts from its own last message, so the targets differ.
+func TestTicketsPushEndDatesCmd_TargetsEachTicketSeparately(t *testing.T) {
+	setNow(t, time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC))
+	setTimeZone(t, "")
+
+	srv, puts := pushEndFixture(t,
+		`{"tickets":[{"id":10,"planned_end_date":null,"created_at":"2026-09-01T10:00:00+04:00"},{"id":20,"planned_end_date":null,"created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}`,
+		map[int64]string{
+			10: "2026-09-11T09:00:00+04:00", // Fri -> Wed 16 Sep
+			20: "2026-09-01T08:00:00+04:00", // Tue -> Fri 4 Sep
+		})
+
+	captureStdout(t, func() {
+		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, TargetHour: 17, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	bodies := map[string]bool{}
+	for _, p := range puts() {
+		bodies[p.Body] = true
 	}
-	if len(putCalls) != 2 {
-		t.Fatalf("expected 2 PUT calls, got %d", len(putCalls))
+	if len(bodies) != 2 {
+		t.Fatalf("expected 2 distinct targets, got %d: %v", len(bodies), bodies)
 	}
-	for _, p := range putCalls {
-		if string(p.Body) != `{"planned_end_date":"2026-08-07T12:00:00Z"}` {
-			t.Errorf("unexpected PUT body: %q", p.Body)
+	for _, want := range []string{
+		`{"planned_end_date":"2026-09-16T17:00:00+04:00"}`,
+		`{"planned_end_date":"2026-09-04T17:00:00+04:00"}`,
+	} {
+		if !bodies[want] {
+			t.Errorf("expected a PUT with %s, got %v", want, bodies)
 		}
 	}
 }
 
-func TestTicketsPushEndDatesCmd_EndHour(t *testing.T) {
-	setNow(t, time.Date(2026, 8, 4, 12, 7, 30, 0, time.UTC)) // Tuesday
-	var putCalls []struct {
-		Path string
-		Body []byte
-	}
-	var putMu sync.Mutex
+func TestTicketsPushEndDatesCmd_SkipsTicketsAlreadyAtTheTarget(t *testing.T) {
+	setNow(t, time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC))
+	setTimeZone(t, "")
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_end_date":null}],"meta":{"has_next":false}}`)
-	})
-	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		putMu.Lock()
-		putCalls = append(putCalls, struct {
-			Path string
-			Body []byte
-		}{Path: r.URL.Path, Body: b})
-		putMu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
+	srv, puts := pushEndFixture(t,
+		`{"tickets":[{"id":10,"planned_end_date":"2026-09-16T17:00:00+04:00","created_at":"2026-09-01T10:00:00+04:00"}],"meta":{"has_next":false}}`,
+		map[int64]string{10: "2026-09-11T09:00:00+04:00"})
 
 	out := captureStdout(t, func() {
-		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, PerPage: 100, EndHour: 17}).Run(context.Background(), newTestClient(srv.URL))
+		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, TargetHour: 17, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	if !strings.Contains(out, "2026-08-07T17:00:00Z") {
-		t.Errorf("expected target to be at 17:00, got %q", out)
+	if got := puts(); len(got) != 0 {
+		t.Errorf("expected no PUT for a ticket already at the target, got %v", got)
 	}
-	if len(putCalls) != 1 {
-		t.Fatalf("expected 1 PUT call, got %d", len(putCalls))
+	if !strings.Contains(out, "No changes needed.") {
+		t.Errorf("expected a no-op message, got %q", out)
 	}
-	if string(putCalls[0].Body) != `{"planned_end_date":"2026-08-07T17:00:00Z"}` {
-		t.Errorf("expected body with 17:00, got %q", putCalls[0].Body)
+}
+
+// A ticket with no messages counts from created_at, like the PS helper.
+func TestTicketsPushEndDatesCmd_FallsBackToCreatedAt(t *testing.T) {
+	setNow(t, time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC))
+	setTimeZone(t, "")
+
+	srv, puts := pushEndFixture(t,
+		`{"tickets":[{"id":10,"planned_end_date":null,"created_at":"2026-09-11T09:00:00+04:00"}],"meta":{"has_next":false}}`,
+		map[int64]string{10: ""})
+
+	captureStdout(t, func() {
+		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, TargetHour: 17, PerPage: 100}).Run(context.Background(), newTestClient(srv.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	want := `{"planned_end_date":"2026-09-16T17:00:00+04:00"}`
+	got := puts()
+	if len(got) != 1 || got[0].Body != want {
+		t.Errorf("expected one PUT with %s, got %v", want, got)
+	}
+}
+
+func TestTicketsPushEndDatesCmd_FlagDefaults(t *testing.T) {
+	var cli CLI
+	parser, err := kong.New(&cli)
+	if err != nil {
+		t.Fatalf("kong.New: %v", err)
+	}
+	if _, err := parser.Parse([]string{"tickets", "push-end-dates"}); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := cli.Tickets.PushEndDates.Days; got != 3 {
+		t.Errorf("expected 3 business days by default, got %d", got)
+	}
+	if got := cli.Tickets.PushEndDates.TargetHour; got != 17 {
+		t.Errorf("expected a default target hour of 17, got %d", got)
 	}
 }
 
@@ -549,47 +557,6 @@ func TestChangeSetApply_ReportsError(t *testing.T) {
 // The pushed planned_end_date must carry the same timezone offset as the
 // ticket's existing dates (the Freshservice account timezone), not the CLI
 // machine's local zone.
-func TestTicketsPushEndDatesCmd_MatchesTicketTimezone(t *testing.T) {
-	setNow(t, time.Date(2026, 8, 4, 12, 7, 30, 0, time.UTC)) // Tue 16:07:30+04
-	oldTZ := tz
-	tz = ""
-	t.Cleanup(func() { tz = oldTZ })
-
-	var putBody []byte
-	var mu sync.Mutex
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/_/tickets", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"tickets":[{"id":10,"planned_end_date":null,"created_at":"2026-08-01T10:00:00+04:00"}],"meta":{"has_next":false}}`)
-	})
-	mux.HandleFunc("/api/_/tickets/10", func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		mu.Lock()
-		putBody = b
-		mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"ticket":{"id":10}}`)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	out := captureStdout(t, func() {
-		err := (&TicketsPushEndDatesCmd{Yes: true, Days: 3, PerPage: 100, EndHour: -1}).Run(context.Background(), newTestClient(srv.URL))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	mu.Lock()
-	body := string(putBody)
-	mu.Unlock()
-	want := `{"planned_end_date":"2026-08-07T16:15:00+04:00"}`
-	if body != want {
-		t.Errorf("expected %s, got %q (output: %q)", want, body, out)
-	}
-}
-
 func TestTicketLocation(t *testing.T) {
 	dubai := time.FixedZone("GST", 4*3600)
 	at := time.Date(2026, 8, 1, 10, 0, 0, 0, dubai)
