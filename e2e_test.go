@@ -58,8 +58,18 @@ func exeSuffix() string {
 // the exit code.
 func runFsvc(t *testing.T, env []string, args ...string) (string, int) {
 	t.Helper()
+	// Drop any FSVC_* variables from the caller's environment so a developer's
+	// own configuration cannot change what a test exercises.
+	inherited := make([]string, 0, len(os.Environ()))
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "FSVC_") {
+			continue
+		}
+		inherited = append(inherited, kv)
+	}
+
 	cmd := exec.Command(fsvcBin, args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(inherited, env...)
 	out, err := cmd.CombinedOutput()
 	code := 0
 	if exit, ok := err.(*exec.ExitError); ok {
@@ -151,5 +161,21 @@ func TestE2E_SessionFileConfig(t *testing.T) {
 	}
 	if !strings.Contains(out, "OK: authenticated") {
 		t.Errorf("unexpected session output:\n%s", out)
+	}
+}
+
+// runFsvc must not inherit the caller's FSVC_* variables: a developer with
+// FSVC_CONFIG_FILE or FSVC_SUBDOMAIN exported would otherwise change what these
+// tests exercise.
+func TestE2E_AmbientConfigEnvIsStripped(t *testing.T) {
+	ambient := filepath.Join(t.TempDir(), "ambient.json")
+	t.Setenv("FSVC_CONFIG_FILE", ambient)
+
+	out, code := runFsvc(t, nil, "config", "path")
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d:\n%s", code, out)
+	}
+	if strings.Contains(out, ambient) {
+		t.Errorf("ambient FSVC_CONFIG_FILE leaked into the child process:\n%s", out)
 	}
 }
